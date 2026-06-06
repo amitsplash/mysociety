@@ -15,6 +15,12 @@ using Serilog.Events;
 
 EmergencyStartupLog.Mark("Process started — before Serilog bootstrap");
 
+var cloudRunPort = Environment.GetEnvironmentVariable("PORT");
+if (!string.IsNullOrWhiteSpace(cloudRunPort))
+{
+    Environment.SetEnvironmentVariable("ASPNETCORE_URLS", $"http://+:{cloudRunPort}");
+}
+
 // Bootstrap logger — writes to stdout before full Serilog config (visible in Azure Log stream / stdout).
 Log.Logger = new LoggerConfiguration()
     .MinimumLevel.Information()
@@ -170,42 +176,10 @@ try
         app.Environment.ContentRootPath,
         HostingConfiguration.SummarizeConnectionString(connectionString));
 
-    using (var scope = app.Services.CreateScope())
-    {
-        try
-        {
-            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-            db.Database.Migrate();
-            Log.Information("Database migrations applied");
-
-            if (app.Environment.IsDevelopment())
-            {
-                var seeder = scope.ServiceProvider.GetRequiredService<DatabaseSeeder>();
-                await seeder.SeedAsync();
-                Log.Information("Development seed data applied");
-            }
-        }
-        catch (Exception ex)
-        {
-            Log.Fatal(ex,
-                "Database setup failed. Check ConnectionStrings__DefaultConnection points to a reachable PostgreSQL instance.");
-
-            if (isProduction)
-            {
-                throw;
-            }
-        }
-    }
-
     if (app.Environment.IsDevelopment())
     {
         app.UseSwagger();
         app.UseSwaggerUI();
-    }
-
-    if (!app.Environment.IsDevelopment())
-    {
-        app.UseHttpsRedirection();
     }
 
     app.UseSerilogRequestLogging(options =>
@@ -260,8 +234,38 @@ try
 
     app.MapControllers();
 
+    Log.Information("Starting web host on {Urls}", Environment.GetEnvironmentVariable("ASPNETCORE_URLS") ?? "(default)");
+    await app.StartAsync();
+
+    using (var scope = app.Services.CreateScope())
+    {
+        try
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            await db.Database.MigrateAsync();
+            Log.Information("Database migrations applied");
+
+            if (app.Environment.IsDevelopment())
+            {
+                var seeder = scope.ServiceProvider.GetRequiredService<DatabaseSeeder>();
+                await seeder.SeedAsync();
+                Log.Information("Development seed data applied");
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Fatal(ex,
+                "Database setup failed. Check ConnectionStrings__DefaultConnection points to a reachable PostgreSQL instance.");
+
+            if (isProduction)
+            {
+                throw;
+            }
+        }
+    }
+
     Log.Information("Listening for requests");
-    app.Run();
+    await app.WaitForShutdownAsync();
 }
 catch (Exception ex)
 {
