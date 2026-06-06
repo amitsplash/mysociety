@@ -29,20 +29,18 @@ try
     var builder = WebApplication.CreateBuilder(args);
     var isProduction = !builder.Environment.IsDevelopment();
 
-    var rawConnection = builder.Configuration.GetConnectionString("DefaultConnection");
-    Log.Information("Raw connection setting: {Connection}", HostingConfiguration.SummarizeForLog(rawConnection));
+    var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+    Log.Information("Database connection: {Connection}", HostingConfiguration.SummarizeForLog(connectionString));
 
-    var resolvedConnectionString = HostingConfiguration.ResolveSqliteConnectionString(
-        rawConnection,
-        usePersistentStorage: isProduction);
-    builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
+    if (string.IsNullOrWhiteSpace(connectionString))
     {
-        ["ConnectionStrings:DefaultConnection"] = resolvedConnectionString
-    });
+        throw new InvalidOperationException(
+            "ConnectionStrings:DefaultConnection is required. " +
+            "Set ConnectionStrings__DefaultConnection to your Neon or Supabase PostgreSQL connection string.");
+    }
 
     var logDirectory = HostingConfiguration.ResolveLogDirectory(builder.Environment.ContentRootPath);
     Log.Information("Log directory: {LogDirectory}", logDirectory);
-    Log.Information("SQLite: {SqliteSummary}", HostingConfiguration.DescribeSqlitePath(resolvedConnectionString));
 
     builder.Host.UseSerilog((context, _, configuration) =>
     {
@@ -112,7 +110,7 @@ try
     if (jwtSettings is null || string.IsNullOrWhiteSpace(jwtSettings.Key) || jwtSettings.Key.Length < 32)
     {
         throw new InvalidOperationException(
-            "Jwt:Key must be at least 32 characters. In Azure Portal → Configuration, set Jwt__Key.");
+            "Jwt:Key must be at least 32 characters. Set Jwt__Key environment variable or appsettings.");
     }
 
     builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
@@ -143,6 +141,7 @@ try
                         return false;
                     }
 
+                    // Local web clients (Expo web, Swagger, etc.) — allowed in every environment.
                     if (uri.Host is "localhost" or "127.0.0.1")
                     {
                         return true;
@@ -153,7 +152,7 @@ try
                         return false;
                     }
 
-                    return uri.Host is "localhost" or "127.0.0.1" or "10.0.2.2"
+                    return uri.Host is "10.0.2.2"
                         || uri.Host.StartsWith("192.168.", StringComparison.Ordinal)
                         || uri.Host.StartsWith("10.", StringComparison.Ordinal);
                 })
@@ -169,22 +168,15 @@ try
         "Bootstrapped. Environment={Environment}; ContentRoot={ContentRoot}; Connection={Connection}",
         app.Environment.EnvironmentName,
         app.Environment.ContentRootPath,
-        SummarizeConnectionString(resolvedConnectionString));
+        HostingConfiguration.SummarizeConnectionString(connectionString));
 
     using (var scope = app.Services.CreateScope())
     {
         try
         {
-            HostingConfiguration.EnsureSqliteDirectoryExists(resolvedConnectionString);
-            Log.Information("SQLite directory ready. {SqliteSummary}",
-                HostingConfiguration.DescribeSqlitePath(resolvedConnectionString));
-
             var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
             db.Database.Migrate();
-            db.Database.ExecuteSqlRaw("PRAGMA journal_mode=WAL;");
-            db.Database.ExecuteSqlRaw("PRAGMA busy_timeout=10000;");
-            Log.Information("Database migrations applied. {SqliteSummary}",
-                HostingConfiguration.DescribeSqlitePath(resolvedConnectionString));
+            Log.Information("Database migrations applied");
 
             if (app.Environment.IsDevelopment())
             {
@@ -196,8 +188,7 @@ try
         catch (Exception ex)
         {
             Log.Fatal(ex,
-                "Database setup failed. Check ConnectionStrings__DefaultConnection and write permissions under /home/data (Linux) or D:\\home\\data (Windows). {SqliteSummary}",
-                HostingConfiguration.DescribeSqlitePath(resolvedConnectionString));
+                "Database setup failed. Check ConnectionStrings__DefaultConnection points to a reachable PostgreSQL instance.");
 
             if (isProduction)
             {
@@ -281,22 +272,4 @@ catch (Exception ex)
 finally
 {
     Log.CloseAndFlush();
-}
-
-static string SummarizeConnectionString(string? connectionString)
-{
-    if (string.IsNullOrWhiteSpace(connectionString))
-    {
-        return "missing";
-    }
-
-    try
-    {
-        var sqliteBuilder = new Microsoft.Data.Sqlite.SqliteConnectionStringBuilder(connectionString);
-        return $"sqlite:{sqliteBuilder.DataSource}";
-    }
-    catch
-    {
-        return "configured(non-sqlite)";
-    }
 }
