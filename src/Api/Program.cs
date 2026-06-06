@@ -1,19 +1,20 @@
 using System.Text;
 using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using MySociety.Api.Hosting;
 using MySociety.Api.Middleware;
 using MySociety.Application;
 using MySociety.Infrastructure;
-using MySociety.Infrastructure.Persistence;
 using MySociety.Infrastructure.Security;
 using Serilog;
 using Serilog.Events;
 
 EmergencyStartupLog.Mark("Process started — before Serilog bootstrap");
+
+var migrateOnly = args.Contains("--migrate-only", StringComparer.OrdinalIgnoreCase);
+var skipMigration = args.Contains("--skip-migration", StringComparer.OrdinalIgnoreCase);
 
 var cloudRunPort = Environment.GetEnvironmentVariable("PORT");
 if (!string.IsNullOrWhiteSpace(cloudRunPort))
@@ -33,7 +34,6 @@ try
     EmergencyStartupLog.Mark("Serilog bootstrap logger created");
 
     var builder = WebApplication.CreateBuilder(args);
-    var isProduction = !builder.Environment.IsDevelopment();
 
     var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
     Log.Information("Database connection: {Connection}", HostingConfiguration.SummarizeForLog(connectionString));
@@ -43,6 +43,23 @@ try
         throw new InvalidOperationException(
             "ConnectionStrings:DefaultConnection is required. " +
             "Set ConnectionStrings__DefaultConnection to your Neon or Supabase PostgreSQL connection string.");
+    }
+
+    if (migrateOnly)
+    {
+        builder.Host.UseSerilog((context, _, configuration) =>
+            configuration
+                .MinimumLevel.Information()
+                .WriteTo.Console()
+                .Enrich.WithProperty("Application", "MySociety.Api")
+                .Enrich.WithProperty("Environment", context.HostingEnvironment.EnvironmentName));
+
+        builder.Services.AddInfrastructure(builder.Configuration);
+
+        var migrateApp = builder.Build();
+        await DatabaseBootstrap.ApplyMigrationsAsync(migrateApp.Services, migrateApp.Environment);
+        Log.Information("Migration-only run completed");
+        return;
     }
 
     var logDirectory = HostingConfiguration.ResolveLogDirectory(builder.Environment.ContentRootPath);
@@ -234,35 +251,26 @@ try
 
     app.MapControllers();
 
-    Log.Information("Starting web host on {Urls}", Environment.GetEnvironmentVariable("ASPNETCORE_URLS") ?? "(default)");
-    await app.StartAsync();
-
-    using (var scope = app.Services.CreateScope())
+    if (!skipMigration)
     {
         try
         {
-            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-            await db.Database.MigrateAsync();
-            Log.Information("Database migrations applied");
-
-            if (app.Environment.IsDevelopment())
-            {
-                var seeder = scope.ServiceProvider.GetRequiredService<DatabaseSeeder>();
-                await seeder.SeedAsync();
-                Log.Information("Development seed data applied");
-            }
+            await DatabaseBootstrap.ApplyMigrationsAsync(app.Services, app.Environment);
         }
         catch (Exception ex)
         {
             Log.Fatal(ex,
                 "Database setup failed. Check ConnectionStrings__DefaultConnection points to a reachable PostgreSQL instance.");
-
-            if (isProduction)
-            {
-                throw;
-            }
+            throw;
         }
     }
+    else
+    {
+        Log.Information("Skipping database migration (--skip-migration)");
+    }
+
+    Log.Information("Starting web host on {Urls}", Environment.GetEnvironmentVariable("ASPNETCORE_URLS") ?? "(default)");
+    await app.StartAsync();
 
     Log.Information("Listening for requests");
     await app.WaitForShutdownAsync();

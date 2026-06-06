@@ -25,7 +25,10 @@ public static class DependencyInjection
 
         services.AddDbContext<AppDbContext>(options =>
             options.UseNpgsql(connectionString, npgsql =>
-                npgsql.EnableRetryOnFailure(maxRetryCount: 3)));
+            {
+                npgsql.MigrationsAssembly(typeof(AppDbContext).Assembly.GetName().Name);
+                npgsql.EnableRetryOnFailure(maxRetryCount: 3);
+            }));
 
         services.Configure<JwtSettings>(configuration.GetSection(JwtSettings.SectionName));
         services.Configure<OtpSettings>(configuration.GetSection(OtpSettings.SectionName));
