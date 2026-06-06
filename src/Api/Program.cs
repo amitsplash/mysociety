@@ -143,6 +143,11 @@ try
                         return false;
                     }
 
+                    if (uri.Host is "localhost" or "127.0.0.1")
+                    {
+                        return true;
+                    }
+
                     if (!builder.Environment.IsDevelopment())
                     {
                         return false;
