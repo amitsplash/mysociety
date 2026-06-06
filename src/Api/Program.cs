@@ -14,7 +14,6 @@ using Serilog.Events;
 EmergencyStartupLog.Mark("Process started — before Serilog bootstrap");
 
 var migrateOnly = args.Contains("--migrate-only", StringComparer.OrdinalIgnoreCase);
-var skipMigration = args.Contains("--skip-migration", StringComparer.OrdinalIgnoreCase);
 
 var cloudRunPort = Environment.GetEnvironmentVariable("PORT");
 if (!string.IsNullOrWhiteSpace(cloudRunPort))
@@ -185,6 +184,7 @@ try
     });
     builder.Services.AddApplication();
     builder.Services.AddInfrastructure(builder.Configuration);
+    builder.Services.AddSingleton<DatabaseMigrationState>();
 
     var app = builder.Build();
     Log.Information(
@@ -231,6 +231,7 @@ try
     });
 
     app.UseRouting();
+    app.UseMiddleware<DatabaseMigrationMiddleware>();
     app.UseCors("MobileDev");
     app.UseMiddleware<GlobalExceptionHandler>();
     app.UseAuthentication();
@@ -251,14 +252,22 @@ try
 
     app.MapControllers();
 
-    if (!skipMigration)
+    var migrationState = app.Services.GetRequiredService<DatabaseMigrationState>();
+
+    Log.Information("Starting web host on {Urls}", Environment.GetEnvironmentVariable("ASPNETCORE_URLS") ?? "(default)");
+    await app.StartAsync();
+    Log.Information("Web host listening — Cloud Run startup probe can reach /health");
+
+    if (app.Environment.IsDevelopment())
     {
         try
         {
             await DatabaseBootstrap.ApplyMigrationsAsync(app.Services, app.Environment);
+            migrationState.MarkComplete();
         }
         catch (Exception ex)
         {
+            migrationState.MarkFailed(ex);
             Log.Fatal(ex,
                 "Database setup failed. Check ConnectionStrings__DefaultConnection points to a reachable PostgreSQL instance.");
             throw;
@@ -266,11 +275,23 @@ try
     }
     else
     {
-        Log.Information("Skipping database migration (--skip-migration)");
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await DatabaseBootstrap.ApplyMigrationsAsync(app.Services, app.Environment);
+                migrationState.MarkComplete();
+                Log.Information("Database ready — accepting API traffic");
+            }
+            catch (Exception ex)
+            {
+                migrationState.MarkFailed(ex);
+                Log.Fatal(ex,
+                    "Database setup failed. Check ConnectionStrings__DefaultConnection points to a reachable PostgreSQL instance.");
+                app.Lifetime.StopApplication();
+            }
+        });
     }
-
-    Log.Information("Starting web host on {Urls}", Environment.GetEnvironmentVariable("ASPNETCORE_URLS") ?? "(default)");
-    await app.StartAsync();
 
     Log.Information("Listening for requests");
     await app.WaitForShutdownAsync();
