@@ -25,12 +25,12 @@ public class AuthServiceTests
 
         var sut = CreateAuthService(context);
         var result = await sut.LoginAsync(
-            new LoginRequest("demo", "Password123!"),
+            new LoginRequest("9000000001", "Password123!"),
             CancellationToken.None);
 
         Assert.False(string.IsNullOrWhiteSpace(result.Token));
         Assert.NotEmpty(result.Memberships);
-        Assert.Equal("demo", result.User.Username);
+        Assert.Equal("9000000001", result.User.Phone);
     }
 
     [Fact]
@@ -40,11 +40,12 @@ public class AuthServiceTests
         var sut = CreateAuthService(context);
 
         var result = await sut.RegisterAsync(
-            new RegisterRequest("newuser", "new@example.com", "New User", "Password123!"),
+            new RegisterRequest("9876543210", "new@example.com", "New User", "Password123!"),
             CancellationToken.None);
 
         Assert.False(string.IsNullOrWhiteSpace(result.Token));
-        Assert.Equal("newuser", result.User.Username);
+        Assert.Equal("9876543210", result.User.Phone);
+        Assert.Equal("user_9876543210", result.User.Username);
         Assert.Empty(result.Memberships);
     }
 
@@ -60,7 +61,7 @@ public class AuthServiceTests
         var sut = CreateAuthService(context);
 
         await Assert.ThrowsAsync<UnauthorizedException>(async () =>
-            await sut.LoginAsync(new LoginRequest("demo", "Wrong12!"), CancellationToken.None));
+            await sut.LoginAsync(new LoginRequest("9000000001", "Wrong12!"), CancellationToken.None));
     }
 
     private static AuthService CreateAuthService(AppDbContext context)

@@ -184,6 +184,7 @@ try
     });
     builder.Services.AddApplication();
     builder.Services.AddInfrastructure(builder.Configuration);
+    builder.Services.AddHostedService<MaintenanceAlertHostedService>();
     builder.Services.AddSingleton<DatabaseMigrationState>();
 
     var app = builder.Build();
@@ -237,7 +238,20 @@ try
     app.UseAuthentication();
     app.UseAuthorization();
 
-    app.MapGet("/health", () => Results.Ok(new { status = "alive" }))
+    app.MapGet("/health", (DatabaseMigrationState migrationState) =>
+    {
+        if (migrationState.Failure is not null)
+        {
+            return Results.Json(new { status = "unhealthy", database = "failed" }, statusCode: StatusCodes.Status503ServiceUnavailable);
+        }
+
+        if (!migrationState.IsComplete)
+        {
+            return Results.Ok(new { status = "alive", database = migrationState.IsInProgress ? "migrating" : "pending" });
+        }
+
+        return Results.Ok(new { status = "alive", database = "ready" });
+    })
         .AllowAnonymous()
         .ExcludeFromDescription();
 
@@ -258,39 +272,19 @@ try
     await app.StartAsync();
     Log.Information("Web host listening — Cloud Run startup probe can reach /health");
 
-    if (app.Environment.IsDevelopment())
+    migrationState.MarkInProgress();
+    try
     {
-        try
-        {
-            await DatabaseBootstrap.ApplyMigrationsAsync(app.Services, app.Environment);
-            migrationState.MarkComplete();
-        }
-        catch (Exception ex)
-        {
-            migrationState.MarkFailed(ex);
-            Log.Fatal(ex,
-                "Database setup failed. Check ConnectionStrings__DefaultConnection points to a reachable PostgreSQL instance.");
-            throw;
-        }
+        await DatabaseBootstrap.ApplyMigrationsAsync(app.Services, app.Environment);
+        migrationState.MarkComplete();
+        Log.Information("Database ready — accepting API traffic");
     }
-    else
+    catch (Exception ex)
     {
-        _ = Task.Run(async () =>
-        {
-            try
-            {
-                await DatabaseBootstrap.ApplyMigrationsAsync(app.Services, app.Environment);
-                migrationState.MarkComplete();
-                Log.Information("Database ready — accepting API traffic");
-            }
-            catch (Exception ex)
-            {
-                migrationState.MarkFailed(ex);
-                Log.Fatal(ex,
-                    "Database setup failed. Check ConnectionStrings__DefaultConnection points to a reachable PostgreSQL instance.");
-                app.Lifetime.StopApplication();
-            }
-        });
+        migrationState.MarkFailed(ex);
+        Log.Fatal(ex,
+            "Database setup failed. Check ConnectionStrings__DefaultConnection points to a reachable PostgreSQL instance.");
+        throw;
     }
 
     Log.Information("Listening for requests");

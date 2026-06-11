@@ -40,3 +40,7 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# accidental EAS inspect output (e.g. ~/target/output/path on Windows)
+/~/
+/eas-inspect*/

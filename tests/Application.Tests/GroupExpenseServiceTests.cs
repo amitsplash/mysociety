@@ -35,9 +35,13 @@ public class GroupExpenseServiceTests
             CancellationToken.None);
         var contribution = generated.Contributions.Single(c => c.MemberId == memberId);
 
-        await contributionService.RecordPaymentAsync(
+        var payment = await contributionService.RecordPaymentAsync(
             new RecordPaymentRequest(memberId, contribution.Amount, contribution.Id),
             memberId,
+            CancellationToken.None);
+        await contributionService.ApprovePaymentSubmissionAsync(
+            payment.SubmissionId,
+            adminId,
             CancellationToken.None);
 
         var sut = CreateGroupExpenseService(context);
@@ -118,7 +122,8 @@ public class GroupExpenseServiceTests
             new LedgerService(context),
             new UnitOfWork(context),
             new GenerateContributionsRequestValidator(),
-            new RecordPaymentRequestValidator());
+            new RecordPaymentRequestValidator(),
+            new FakeNotificationService());
     }
 
     private static async Task<(Guid GroupId, Guid AdminId, Guid MemberId)> SeedGroupWithMemberAsync(

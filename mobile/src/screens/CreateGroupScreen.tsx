@@ -21,6 +21,7 @@ export function CreateGroupScreen({ navigation }: Props) {
   const { token, user, addMembership } = useAuth();
   const { showSuccess, showError } = useToast();
   const [name, setName] = useState('');
+  const [tagline, setTagline] = useState('');
   const [groupType, setGroupType] = useState<GroupType>('Rwa');
   const [contributionModel, setContributionModel] = useState<ContributionModel>('Fixed');
   const [contributionFrequency, setContributionFrequency] =
@@ -59,6 +60,7 @@ export function CreateGroupScreen({ navigation }: Props) {
       const response = await api.createGroup(
         {
           name: name.trim(),
+          tagline: tagline.trim() || undefined,
           type: groupType,
           contributionModel,
           contributionAmount: Number(amount) || 0,
@@ -100,6 +102,13 @@ export function CreateGroupScreen({ navigation }: Props) {
   return (
     <Screen title="Create group" subtitle={`Signed in as ${user?.name ?? 'you'}`}>
       <Input label="Group name" value={name} onChangeText={setName} placeholder="e.g. Sunrise RWA" />
+      <Input
+        label="Tagline (optional)"
+        value={tagline}
+        onChangeText={setTagline}
+        placeholder="e.g. Building better communities"
+        autoCapitalize="sentences"
+      />
       <OptionSection
         label="Group type"
         options={[

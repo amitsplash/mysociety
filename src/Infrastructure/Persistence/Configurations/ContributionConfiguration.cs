@@ -12,6 +12,7 @@ public class ContributionConfiguration : IEntityTypeConfiguration<Contribution>
         builder.HasKey(x => x.Id);
         builder.Property(x => x.Period).HasMaxLength(20).IsRequired();
         builder.Property(x => x.Amount).HasPrecision(18, 2);
+        builder.Property(x => x.InternalRemark).HasMaxLength(4000);
 
         builder.HasIndex(x => new { x.MemberId, x.Period }).IsUnique();
 

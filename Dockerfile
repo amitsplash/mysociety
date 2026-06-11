@@ -1,8 +1,9 @@
 # MySociety Web API — .NET 8 (Linux)
 # Build:  docker build -t mysociety-api .
 # Run:    docker run --rm -p 8080:8080 \
-#           -e ConnectionStrings__DefaultConnection="Host=...;Port=5432;Database=...;Username=...;Password=...;SSL Mode=Require;" \
+#           -e ConnectionStrings__DefaultConnection="Host=ep-xxx.region.aws.neon.tech;Port=5432;Database=neondb;Username=...;Password=...;SSL Mode=Require;" \
 #           -e Jwt__Key="your-secret-key-at-least-32-characters-long" mysociety-api
+# Note: use the direct Neon/Supabase host for migrations (not the -pooler endpoint).
 
 FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS base
 WORKDIR /app

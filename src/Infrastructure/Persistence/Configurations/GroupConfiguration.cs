@@ -24,6 +24,10 @@ public class GroupConfiguration : IEntityTypeConfiguration<Group>
 
         builder.Property(x => x.Name).HasMaxLength(200).IsRequired();
 
+        builder.Property(x => x.Tagline).HasMaxLength(200);
+
+        builder.Property(x => x.LogoUrl).HasMaxLength(500);
+
         builder.Property(x => x.ContributionAmount).HasPrecision(18, 2);
 
         builder.Property(x => x.OpeningMaintenanceBalance).HasPrecision(18, 2);

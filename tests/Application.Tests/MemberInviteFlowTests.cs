@@ -67,6 +67,60 @@ public class MemberInviteFlowTests
     }
 
     [Fact]
+    public async Task Register_when_phone_pending_activation_returns_code()
+    {
+        await using var context = await TestDbContextFactory.CreateAsync();
+        var (groupId, adminMemberId) = await SeedGroupAsync(context);
+        var memberService = CreateMemberService(context);
+        await memberService.CreateAsync(new CreateMemberRequest(
+            groupId,
+            "Pending User",
+            "9555111100",
+            MemberRole.Member,
+            0m,
+            null), adminMemberId, CancellationToken.None);
+
+        var authService = CreateAuthService(context);
+
+        var ex = await Assert.ThrowsAsync<ConflictException>(async () =>
+            await authService.RegisterAsync(
+                new RegisterRequest("9555111100", "new@example.com", "New User", "Password123!"),
+                CancellationToken.None));
+
+        Assert.Equal("PENDING_ACTIVATION", ex.Code);
+    }
+
+    [Fact]
+    public async Task Activate_with_email_updates_placeholder_email()
+    {
+        await using var context = await TestDbContextFactory.CreateAsync();
+        var (groupId, adminMemberId) = await SeedGroupAsync(context);
+        var memberService = CreateMemberService(context);
+        var created = await memberService.CreateAsync(new CreateMemberRequest(
+            groupId,
+            "Email User",
+            "9555111101",
+            MemberRole.Member,
+            0m,
+            null), adminMemberId, CancellationToken.None);
+
+        var authService = CreateAuthService(context);
+        await authService.ActivateAccountAsync(
+            new ActivateAccountRequest(
+                "9555111101",
+                created.InviteCode!,
+                null,
+                "NewPass123!",
+                "real@example.com",
+                "Updated Name"),
+            CancellationToken.None);
+
+        var storedUser = context.Users.Single(u => u.Phone == "9555111101");
+        Assert.Equal("real@example.com", storedUser.Email);
+        Assert.Equal("Updated Name", storedUser.Name);
+    }
+
+    [Fact]
     public async Task Activate_with_valid_invite_sets_password_without_otp()
     {
         await using var context = await TestDbContextFactory.CreateAsync();

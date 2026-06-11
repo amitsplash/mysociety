@@ -14,6 +14,18 @@ public class PaymentConfiguration : IEntityTypeConfiguration<Payment>
 
         builder.HasIndex(x => x.MemberId);
         builder.HasIndex(x => x.ContributionId);
+        builder.HasIndex(x => x.SubmissionId);
+        builder.HasIndex(x => new { x.GroupId, x.Status });
+
+        builder.HasOne(x => x.RecordedByMember)
+            .WithMany()
+            .HasForeignKey(x => x.RecordedByMemberId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasOne(x => x.ApprovedByMember)
+            .WithMany()
+            .HasForeignKey(x => x.ApprovedByMemberId)
+            .OnDelete(DeleteBehavior.SetNull);
 
         builder.HasOne(x => x.Member)
             .WithMany(x => x.Payments)

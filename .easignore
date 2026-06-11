@@ -1,0 +1,73 @@
+# EAS Build archive rules (repo root).
+# When this file exists, .gitignore files are NOT applied — keep mobile essentials only.
+
+# --- Backend / API (not needed for Expo mobile build) ---
+/src/
+/tests/
+/Dockerfile
+/docker-entrypoint.sh
+/nuget.config
+/MySociety.sln
+/deploy/
+/artifacts/
+/mysociety-api.zip
+
+# --- Docs & requirements (not needed for build) ---
+/*.md
+/RWA_Meeting_Minutes_Action_Tracker_PRD_v2.md
+/group_contribution_saas_mvp_requirements_md.md
+
+# --- .NET build output ---
+**/bin/
+**/obj/
+**/*.user
+**/*.suo
+.vs/
+**/publish/
+
+# --- Local databases ---
+*.db
+*.db-shm
+*.db-wal
+
+# --- Node / Expo (same as .gitignore) ---
+**/node_modules/
+**/.expo/
+**/dist/
+**/web-build/
+**/expo-env.d.ts
+
+# --- Native generated folders ---
+**/.kotlin/
+**/ios/
+**/android/
+*.orig.*
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+
+# --- Metro / debug ---
+**/.metro-health-check*
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+
+# --- OS / secrets ---
+.DS_Store
+*.pem
+**/.env
+**/.env*.local
+**/*.tsbuildinfo
+
+# --- EAS inspect / accidental local output ---
+mobile/~/
+mobile/eas-inspect*/
+**/eas-inspect*/
+
+# --- Git ---
+.git/
+
+# --- IDE / local Azure deploy secrets ---
+deploy/azure-deploy.local.env

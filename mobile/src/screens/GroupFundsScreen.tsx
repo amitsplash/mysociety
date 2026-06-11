@@ -1,8 +1,8 @@
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { api } from '../api/client';
-import type { GroupFundsResponse, GroupExpenseResponse } from '../api/types';
+import type { GroupExpenseResponse, GroupFundsResponse, GroupIncomeResponse } from '../api/types';
 import { ListScreen } from '../components/ListScreen';
 import { Screen } from '../components/Screen';
 import { StatusBadge } from '../components/StatusBadge';
@@ -17,7 +17,19 @@ type Props = NativeStackScreenProps<MainStackParamList, 'GroupFunds'>;
 type FundsData = {
   funds: GroupFundsResponse;
   expenses: GroupExpenseResponse[];
+  incomes: GroupIncomeResponse[];
 };
+
+type FundTransaction =
+  | { kind: 'income'; id: string; date: string; description: string; amount: number; badge?: string }
+  | {
+      kind: 'expense';
+      id: string;
+      date: string;
+      description: string;
+      amount: number;
+      badge: string;
+    };
 
 function FundBalanceCard({
   label,
@@ -71,11 +83,12 @@ export function GroupFundsScreen({ navigation }: Props) {
       if (!isAdmin) {
         return null;
       }
-      const [funds, expenses] = await Promise.all([
+      const [funds, expenses, incomes] = await Promise.all([
         api.getGroupFunds(groupId, token, memberId),
         api.getGroupExpenses(groupId, token, memberId),
+        api.getGroupIncomes(groupId, token, memberId),
       ]);
-      return { funds, expenses };
+      return { funds, expenses, incomes };
     }, [isAdmin, groupId, token, memberId]),
     [isAdmin, groupId, token, memberId],
     { errorMessage: 'Failed to load group funds' },
@@ -83,6 +96,31 @@ export function GroupFundsScreen({ navigation }: Props) {
 
   const funds = data?.funds;
   const expenses = data?.expenses ?? [];
+  const incomes = data?.incomes ?? [];
+
+  const transactions = useMemo<FundTransaction[]>(() => {
+    const incomeRows: FundTransaction[] = incomes.map((item) => ({
+      kind: 'income',
+      id: item.id,
+      date: item.incomeDate,
+      description: item.description,
+      amount: item.amount,
+      badge: 'Income',
+    }));
+    const expenseRows: FundTransaction[] = expenses.map((item) => ({
+      kind: 'expense',
+      id: item.id,
+      date: item.expenseDate,
+      description: item.description,
+      amount: item.amount,
+      badge: formatEnumLabel(item.fundType),
+    }));
+    return [...incomeRows, ...expenseRows].sort((a, b) => {
+      const dateCompare = new Date(b.date).getTime() - new Date(a.date).getTime();
+      if (dateCompare !== 0) return dateCompare;
+      return a.kind === 'income' ? -1 : 1;
+    });
+  }, [expenses, incomes]);
 
   const ListHeader = (
     <View style={styles.header}>
@@ -91,7 +129,7 @@ export function GroupFundsScreen({ navigation }: Props) {
         balance={funds?.maintenance.balance ?? 0}
         inflows={funds?.maintenance.totalInflows ?? 0}
         outflows={funds?.maintenance.totalOutflows ?? 0}
-        hint="Contribution payments minus maintenance expenses."
+        hint="Contributions and facility income minus maintenance expenses."
       />
       <FundBalanceCard
         label="Corpus fund"
@@ -101,53 +139,64 @@ export function GroupFundsScreen({ navigation }: Props) {
         hint="Member corpus collections minus corpus expenses."
       />
       {isAdmin ? (
-        <Pressable
-          style={({ pressed }) => [styles.addBtn, pressed && styles.addBtnPressed]}
-          onPress={() => navigation.navigate('AddGroupExpense')}>
-          <Text style={styles.addBtnText}>+ Record group expense</Text>
-        </Pressable>
+        <View style={styles.actionRow}>
+          <Pressable
+            style={({ pressed }) => [styles.addBtn, pressed && styles.addBtnPressed]}
+            onPress={() => navigation.navigate('AddGroupIncome')}>
+            <Text style={styles.addBtnText}>+ Record income</Text>
+          </Pressable>
+          <Pressable
+            style={({ pressed }) => [styles.addBtn, pressed && styles.addBtnPressed]}
+            onPress={() => navigation.navigate('AddGroupExpense')}>
+            <Text style={styles.addBtnText}>+ Record expense</Text>
+          </Pressable>
+        </View>
       ) : null}
       <Text style={styles.sectionLabel}>
-        {expenses.length} group expense{expenses.length === 1 ? '' : 's'}
+        {transactions.length} transaction{transactions.length === 1 ? '' : 's'}
       </Text>
     </View>
   );
 
   return (
     <Screen title="Group funds" subtitle="Maintenance & corpus pools" scroll={false}>
-      <ListScreen<GroupExpenseResponse>
-        data={expenses}
+      <ListScreen<FundTransaction>
+        data={transactions}
         loading={loading}
         refreshing={refreshing}
         onRefresh={refresh}
-        emptyTitle="No group expenses"
+        emptyTitle="No transactions yet"
         emptyMessage={
           isAdmin
-            ? 'Record expenses paid from maintenance or corpus funds.'
-            : 'Group expenses will appear here once recorded by an admin.'
+            ? 'Record maintenance income (e.g. clubhouse booking) or group expenses.'
+            : 'Fund transactions will appear here once recorded by an admin.'
         }
-        keyExtractor={(item) => item.id}
+        keyExtractor={(item) => `${item.kind}-${item.id}`}
         ListHeaderComponent={ListHeader}
-        renderItem={({ item }) => <GroupExpenseRow item={item} />}
+        renderItem={({ item }) => <FundTransactionRow item={item} />}
       />
     </Screen>
   );
 }
 
-function GroupExpenseRow({ item }: { item: GroupExpenseResponse }) {
+function FundTransactionRow({ item }: { item: FundTransaction }) {
+  const isIncome = item.kind === 'income';
   return (
     <View style={styles.row}>
       <View style={styles.rowMain}>
         <Text style={styles.rowTitle} numberOfLines={1}>
           {item.description}
         </Text>
-        <StatusBadge label={formatEnumLabel(item.fundType)} compact />
+        {item.badge ? <StatusBadge label={item.badge} compact /> : null}
       </View>
       <Text style={styles.rowMeta} numberOfLines={1}>
-        {formatDateShort(item.expenseDate)}
+        {formatDateShort(item.date)}
       </Text>
-      <Text style={styles.rowAmount} numberOfLines={1}>
-        −{formatCurrency(item.amount)}
+      <Text
+        style={[styles.rowAmount, isIncome ? styles.amountIncome : styles.amountExpense]}
+        numberOfLines={1}>
+        {isIncome ? '+' : '−'}
+        {formatCurrency(item.amount)}
       </Text>
     </View>
   );
@@ -193,15 +242,19 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
     lineHeight: 16,
   },
+  actionRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+    marginBottom: spacing.sm,
+  },
   addBtn: {
-    alignSelf: 'flex-start',
     backgroundColor: colors.primaryMuted,
     borderWidth: 1,
     borderColor: colors.primaryBorder,
     borderRadius: radii.md,
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.md,
-    marginBottom: spacing.sm,
   },
   addBtnPressed: { opacity: 0.9 },
   addBtnText: { fontSize: 13, fontWeight: '700', color: colors.primary },
@@ -244,7 +297,8 @@ const styles = StyleSheet.create({
   rowAmount: {
     fontSize: 14,
     fontWeight: '700',
-    color: colors.danger,
     flexShrink: 0,
   },
+  amountIncome: { color: colors.success },
+  amountExpense: { color: colors.danger },
 });

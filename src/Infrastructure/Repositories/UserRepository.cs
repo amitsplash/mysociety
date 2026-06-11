@@ -75,6 +75,11 @@ public class UserRepository : IUserRepository
         return _dbContext.Users.AnyAsync(x => x.Username == username, cancellationToken);
     }
 
+    public Task<bool> ExistsByPhoneAsync(string phone, CancellationToken cancellationToken)
+    {
+        return _dbContext.Users.AnyAsync(x => x.Phone == phone, cancellationToken);
+    }
+
     public Task<bool> ExistsByEmailAsync(string email, CancellationToken cancellationToken)
     {
         return _dbContext.Users.AnyAsync(x => x.Email == email, cancellationToken);

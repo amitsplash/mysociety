@@ -20,6 +20,9 @@ public class Member : BaseEntity
     public ICollection<Expense> ExpensesCreated { get; set; } = [];
     public ICollection<Expense> ExpensesApproved { get; set; } = [];
     public ICollection<GroupExpense> GroupExpensesCreated { get; set; } = [];
+    public ICollection<GroupIncome> GroupIncomesCreated { get; set; } = [];
     public ICollection<LedgerEntry> LedgerEntries { get; set; } = [];
     public ICollection<Payment> Payments { get; set; } = [];
+    public ICollection<Asset> AssetsCreated { get; set; } = [];
+    public ICollection<MaintenanceRecord> MaintenanceRecordsCreated { get; set; } = [];
 }

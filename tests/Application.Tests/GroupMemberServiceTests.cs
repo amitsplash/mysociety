@@ -46,6 +46,55 @@ public class GroupMemberServiceTests
     }
 
     [Fact]
+    public async Task CreateGroup_persists_tagline_and_logo_url()
+    {
+        await using var context = await TestDbContextFactory.CreateAsync();
+        var owner = await TestData.AddRegisteredUserAsync(context, "owner-brand", "owner-brand@test.com", "Owner");
+        var sut = TestData.CreateGroupService(context);
+
+        var result = await sut.CreateAsync(
+            owner.Id,
+            TestData.DefaultCreateGroupRequest(
+                name: "Sunrise RWA",
+                tagline: "Building better communities",
+                logoUrl: "https://example.com/logo.png"),
+            CancellationToken.None);
+
+        Assert.Equal("Building better communities", result.Group.Tagline);
+        Assert.Equal("https://example.com/logo.png", result.Group.LogoUrl);
+    }
+
+    [Fact]
+    public async Task UpdateGroup_updates_tagline_and_logo_url()
+    {
+        await using var context = await TestDbContextFactory.CreateAsync();
+        var owner = await TestData.AddRegisteredUserAsync(context, "owner-brand2", "owner-brand2@test.com", "Owner");
+        var sut = TestData.CreateGroupService(context);
+
+        var created = await sut.CreateAsync(
+            owner.Id,
+            TestData.DefaultCreateGroupRequest(name: "Brand Group"),
+            CancellationToken.None);
+
+        var updated = await sut.UpdateAsync(
+            created.Group.Id,
+            new UpdateGroupRequest(
+                "Brand Group",
+                GroupType.Rwa,
+                ContributionModel.Fixed,
+                1000m,
+                ContributionFrequency.Monthly,
+                Tagline: "Together we thrive",
+                LogoUrl: "https://cdn.example.com/group.png"),
+            owner.Id,
+            created.CreatorMember.Id,
+            CancellationToken.None);
+
+        Assert.Equal("Together we thrive", updated.Tagline);
+        Assert.Equal("https://cdn.example.com/group.png", updated.LogoUrl);
+    }
+
+    [Fact]
     public async Task UpdateGroup_requires_admin_role()
     {
         await using var context = await TestDbContextFactory.CreateAsync();

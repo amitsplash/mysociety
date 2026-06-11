@@ -6,6 +6,7 @@ import { useCallback, useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { api, ApiClientError } from '../api/client';
 import { AppIcon } from '../components/AppIcon';
+import { GroupAvatar } from '../components/GroupAvatar';
 import { Button } from '../components/Button';
 import { Screen } from '../components/Screen';
 import { SectionHeader } from '../components/SectionHeader';
@@ -29,8 +30,16 @@ type HubLink = {
   title: string;
   subtitle: string;
   icon: keyof typeof Ionicons.glyphMap;
-  tone: 'indigo' | 'teal' | 'emerald' | 'rose';
-  route: keyof MainStackParamList;
+  tone: 'indigo' | 'teal' | 'emerald' | 'rose' | 'amber';
+  route:
+    | 'GroupSettings'
+    | 'Members'
+    | 'AddMember'
+    | 'GroupFunds'
+    | 'ContributionReport'
+    | 'Ledger'
+    | 'AddExpense'
+    | 'AssetRegister';
   adminOnly?: boolean;
   fundType?: 'Maintenance' | 'Corpus';
 };
@@ -94,6 +103,15 @@ export function GroupHubScreen({ navigation }: Props) {
 
   const links: HubLink[] = [
     {
+      id: 'group-profile',
+      title: 'Group profile',
+      subtitle: 'Tagline, logo & appearance',
+      icon: 'color-palette',
+      tone: 'indigo',
+      route: 'GroupSettings',
+      adminOnly: true,
+    },
+    {
       id: 'members',
       title: 'Members',
       subtitle: 'Manage group roster',
@@ -155,6 +173,14 @@ export function GroupHubScreen({ navigation }: Props) {
       tone: 'indigo',
       route: 'AddExpense',
     },
+    {
+      id: 'asset-register',
+      title: 'Asset register',
+      subtitle: 'Equipment & preventive maintenance',
+      icon: 'construct',
+      tone: 'amber',
+      route: 'AssetRegister',
+    },
   ];
 
   if (!hasActiveGroup) {
@@ -189,14 +215,24 @@ export function GroupHubScreen({ navigation }: Props) {
             tintColor={colors.primary}
           />
         }>
-        <Text style={styles.eyebrow}>Community hub</Text>
-        <Text style={styles.name}>{activeMembership?.groupName ?? 'Your group'}</Text>
-        {group ? (
-          <Text style={styles.meta}>
-            {formatEnumLabel(group.type)} · {formatEnumLabel(group.contributionFrequency)} ·{' '}
-            {formatCurrency(group.contributionAmount)}
-          </Text>
-        ) : null}
+        <View style={styles.profileHeader}>
+          <GroupAvatar
+            name={activeMembership?.groupName ?? 'Your group'}
+            logoUrl={group?.logoUrl}
+            size={56}
+          />
+          <View style={styles.profileText}>
+            <Text style={styles.eyebrow}>Community hub</Text>
+            <Text style={styles.name}>{activeMembership?.groupName ?? 'Your group'}</Text>
+            {group?.tagline ? <Text style={styles.tagline}>{group.tagline}</Text> : null}
+            {group ? (
+              <Text style={styles.meta}>
+                {formatEnumLabel(group.type)} · {formatEnumLabel(group.contributionFrequency)} ·{' '}
+                {formatCurrency(group.contributionAmount)}
+              </Text>
+            ) : null}
+          </View>
+        </View>
 
         <SurfaceCard variant="gradient">
           <View style={styles.roleRow}>
@@ -273,10 +309,13 @@ export function GroupHubScreen({ navigation }: Props) {
             <Ionicons name="megaphone-outline" size={16} color={colors.primary} />
             <Text style={styles.announcementTitle}>Group notice</Text>
           </View>
-          <Text style={styles.announcementHeadline}>Contribution reminders</Text>
+          <Text style={styles.announcementHeadline}>
+            {group?.tagline ?? 'Contribution reminders'}
+          </Text>
           <Text style={styles.announcementBody}>
-            Pending contributions are highlighted on the Payments tab. Admins can generate
-            monthly cycles from the same screen.
+            {group?.tagline
+              ? `This is your space for ${activeMembership?.groupName ?? 'the group'}. Pending contributions are highlighted on the Payments tab.`
+              : 'Pending contributions are highlighted on the Payments tab. Admins can generate monthly cycles from the same screen.'}
           </Text>
         </SurfaceCard>
 
@@ -288,9 +327,17 @@ export function GroupHubScreen({ navigation }: Props) {
 
 const styles = StyleSheet.create({
   scroll: { padding: spacing.md, paddingBottom: spacing.xl },
+  profileHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.md,
+    marginBottom: spacing.md,
+  },
+  profileText: { flex: 1 },
   eyebrow: { ...typography.section, color: colors.textMuted },
   name: { fontSize: 20, fontWeight: '800', color: colors.text, marginTop: 4 },
-  meta: { fontSize: 11, color: colors.primary, fontWeight: '600', marginTop: 4, marginBottom: spacing.md },
+  tagline: { fontSize: 13, color: colors.textMuted, marginTop: 4, lineHeight: 18 },
+  meta: { fontSize: 11, color: colors.primary, fontWeight: '600', marginTop: 4 },
   section: { marginBottom: spacing.md },
   roleRow: {
     flexDirection: 'row',

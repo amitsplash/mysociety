@@ -64,7 +64,9 @@ public class CreateGroupRequestValidator : AbstractValidator<CreateGroupRequest>
 
         RuleFor(x => x.CreatorCorpusAmount).GreaterThanOrEqualTo(0);
 
+        RuleFor(x => x.Tagline).MaximumLength(200).When(x => !string.IsNullOrWhiteSpace(x.Tagline));
 
+        RuleFor(x => x.LogoUrl).MaximumLength(500).When(x => !string.IsNullOrWhiteSpace(x.LogoUrl));
 
     }
 
@@ -112,7 +114,9 @@ public class UpdateGroupRequestValidator : AbstractValidator<UpdateGroupRequest>
 
         RuleFor(x => x.ContributionFrequency).IsInEnum();
 
+        RuleFor(x => x.Tagline).MaximumLength(200).When(x => !string.IsNullOrWhiteSpace(x.Tagline));
 
+        RuleFor(x => x.LogoUrl).MaximumLength(500).When(x => !string.IsNullOrWhiteSpace(x.LogoUrl));
 
     }
 

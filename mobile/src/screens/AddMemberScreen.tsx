@@ -80,8 +80,9 @@ export function AddMemberScreen({ navigation }: Props) {
   const shareInvite = async () => {
     if (!inviteDetails?.inviteCode) return;
     const memberPhone = inviteDetails.member.phone;
+    const groupLabel = group?.name ?? 'Your group';
     const message = [
-      'MySociety — activate your account',
+      `${groupLabel} — activate your account`,
       `Phone: ${memberPhone}`,
       `Invite code: ${inviteDetails.inviteCode}`,
       `Expires: ${formatExpiry(inviteDetails.inviteExpiresAt ?? undefined)}`,

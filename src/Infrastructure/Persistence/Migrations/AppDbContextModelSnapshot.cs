@@ -71,6 +71,74 @@ namespace MySociety.Infrastructure.Persistence.Migrations
                     b.ToTable("AgendaItems", (string)null);
                 });
 
+            modelBuilder.Entity("MySociety.Domain.Entities.Asset", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("AlertLeadDays")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Category")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("CreatedByMemberId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<Guid>("GroupId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("InstallDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("LastAlertedForDueDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Location")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<int>("MaintenanceIntervalDays")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<DateTime?>("NextDueDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("SerialNumber")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("VendorName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedByMemberId");
+
+                    b.HasIndex("GroupId");
+
+                    b.HasIndex("GroupId", "Status");
+
+                    b.ToTable("Assets", (string)null);
+                });
+
             modelBuilder.Entity("MySociety.Domain.Entities.CommitteeMember", b =>
                 {
                     b.Property<Guid>("Id")
@@ -114,6 +182,10 @@ namespace MySociety.Infrastructure.Persistence.Migrations
 
                     b.Property<Guid>("GroupId")
                         .HasColumnType("uuid");
+
+                    b.Property<string>("InternalRemark")
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)");
 
                     b.Property<Guid>("MemberId")
                         .HasColumnType("uuid");
@@ -204,6 +276,10 @@ namespace MySociety.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("CreatedByUserId")
                         .HasColumnType("uuid");
 
+                    b.Property<string>("LogoUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(200)
@@ -216,6 +292,10 @@ namespace MySociety.Infrastructure.Persistence.Migrations
                     b.Property<decimal>("OpeningMaintenanceBalance")
                         .HasPrecision(18, 2)
                         .HasColumnType("numeric(18,2)");
+
+                    b.Property<string>("Tagline")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
 
                     b.Property<int>("Type")
                         .HasColumnType("integer");
@@ -268,6 +348,42 @@ namespace MySociety.Infrastructure.Persistence.Migrations
                     b.ToTable("GroupExpenses", (string)null);
                 });
 
+            modelBuilder.Entity("MySociety.Domain.Entities.GroupIncome", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("CreatedByMemberId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<Guid>("GroupId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("IncomeDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedByMemberId");
+
+                    b.HasIndex("GroupId");
+
+                    b.ToTable("GroupIncomes", (string)null);
+                });
+
             modelBuilder.Entity("MySociety.Domain.Entities.LedgerEntry", b =>
                 {
                     b.Property<Guid>("Id")
@@ -306,6 +422,55 @@ namespace MySociety.Infrastructure.Persistence.Migrations
                         .IsUnique();
 
                     b.ToTable("LedgerEntries", (string)null);
+                });
+
+            modelBuilder.Entity("MySociety.Domain.Entities.MaintenanceRecord", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("AssetId")
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal?>("Cost")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("CreatedByMemberId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<Guid>("GroupId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<DateTime>("PerformedDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("VendorName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AssetId");
+
+                    b.HasIndex("CreatedByMemberId");
+
+                    b.HasIndex("GroupId");
+
+                    b.ToTable("MaintenanceRecords", (string)null);
                 });
 
             modelBuilder.Entity("MySociety.Domain.Entities.Meeting", b =>
@@ -494,6 +659,52 @@ namespace MySociety.Infrastructure.Persistence.Migrations
                     b.ToTable("Minutes", (string)null);
                 });
 
+            modelBuilder.Entity("MySociety.Domain.Entities.Notification", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Body")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("DataJson")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<Guid>("GroupId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("ReadAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("GroupId");
+
+                    b.HasIndex("UserId", "ReadAt", "CreatedAt");
+
+                    b.ToTable("Notifications", (string)null);
+                });
+
             modelBuilder.Entity("MySociety.Domain.Entities.OpenMatter", b =>
                 {
                     b.Property<Guid>("Id")
@@ -588,6 +799,12 @@ namespace MySociety.Infrastructure.Persistence.Migrations
                         .HasPrecision(18, 2)
                         .HasColumnType("numeric(18,2)");
 
+                    b.Property<DateTime?>("ApprovedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("ApprovedByMemberId")
+                        .HasColumnType("uuid");
+
                     b.Property<Guid?>("ContributionId")
                         .HasColumnType("uuid");
 
@@ -600,13 +817,28 @@ namespace MySociety.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("MemberId")
                         .HasColumnType("uuid");
 
+                    b.Property<Guid>("RecordedByMemberId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("SubmissionId")
+                        .HasColumnType("uuid");
+
                     b.HasKey("Id");
+
+                    b.HasIndex("ApprovedByMemberId");
 
                     b.HasIndex("ContributionId");
 
-                    b.HasIndex("GroupId");
-
                     b.HasIndex("MemberId");
+
+                    b.HasIndex("RecordedByMemberId");
+
+                    b.HasIndex("SubmissionId");
+
+                    b.HasIndex("GroupId", "Status");
 
                     b.ToTable("Payments", (string)null);
                 });
@@ -775,6 +1007,25 @@ namespace MySociety.Infrastructure.Persistence.Migrations
                     b.Navigation("OpenMatter");
                 });
 
+            modelBuilder.Entity("MySociety.Domain.Entities.Asset", b =>
+                {
+                    b.HasOne("MySociety.Domain.Entities.Member", "CreatedByMember")
+                        .WithMany("AssetsCreated")
+                        .HasForeignKey("CreatedByMemberId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("MySociety.Domain.Entities.Group", "Group")
+                        .WithMany("Assets")
+                        .HasForeignKey("GroupId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("CreatedByMember");
+
+                    b.Navigation("Group");
+                });
+
             modelBuilder.Entity("MySociety.Domain.Entities.CommitteeMember", b =>
                 {
                     b.HasOne("MySociety.Domain.Entities.Group", "Group")
@@ -869,6 +1120,25 @@ namespace MySociety.Infrastructure.Persistence.Migrations
                     b.Navigation("Group");
                 });
 
+            modelBuilder.Entity("MySociety.Domain.Entities.GroupIncome", b =>
+                {
+                    b.HasOne("MySociety.Domain.Entities.Member", "CreatedByMember")
+                        .WithMany("GroupIncomesCreated")
+                        .HasForeignKey("CreatedByMemberId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("MySociety.Domain.Entities.Group", "Group")
+                        .WithMany("GroupIncomes")
+                        .HasForeignKey("GroupId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("CreatedByMember");
+
+                    b.Navigation("Group");
+                });
+
             modelBuilder.Entity("MySociety.Domain.Entities.LedgerEntry", b =>
                 {
                     b.HasOne("MySociety.Domain.Entities.Group", "Group")
@@ -886,6 +1156,33 @@ namespace MySociety.Infrastructure.Persistence.Migrations
                     b.Navigation("Group");
 
                     b.Navigation("Member");
+                });
+
+            modelBuilder.Entity("MySociety.Domain.Entities.MaintenanceRecord", b =>
+                {
+                    b.HasOne("MySociety.Domain.Entities.Asset", "Asset")
+                        .WithMany("MaintenanceRecords")
+                        .HasForeignKey("AssetId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("MySociety.Domain.Entities.Member", "CreatedByMember")
+                        .WithMany("MaintenanceRecordsCreated")
+                        .HasForeignKey("CreatedByMemberId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("MySociety.Domain.Entities.Group", "Group")
+                        .WithMany()
+                        .HasForeignKey("GroupId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Asset");
+
+                    b.Navigation("CreatedByMember");
+
+                    b.Navigation("Group");
                 });
 
             modelBuilder.Entity("MySociety.Domain.Entities.Meeting", b =>
@@ -975,6 +1272,25 @@ namespace MySociety.Infrastructure.Persistence.Migrations
                     b.Navigation("AgendaItem");
                 });
 
+            modelBuilder.Entity("MySociety.Domain.Entities.Notification", b =>
+                {
+                    b.HasOne("MySociety.Domain.Entities.Group", "Group")
+                        .WithMany()
+                        .HasForeignKey("GroupId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("MySociety.Domain.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Group");
+
+                    b.Navigation("User");
+                });
+
             modelBuilder.Entity("MySociety.Domain.Entities.OpenMatter", b =>
                 {
                     b.HasOne("MySociety.Domain.Entities.Member", "CreatedByMember")
@@ -1028,6 +1344,11 @@ namespace MySociety.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("MySociety.Domain.Entities.Payment", b =>
                 {
+                    b.HasOne("MySociety.Domain.Entities.Member", "ApprovedByMember")
+                        .WithMany()
+                        .HasForeignKey("ApprovedByMemberId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.HasOne("MySociety.Domain.Entities.Contribution", "Contribution")
                         .WithMany()
                         .HasForeignKey("ContributionId")
@@ -1045,11 +1366,21 @@ namespace MySociety.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.HasOne("MySociety.Domain.Entities.Member", "RecordedByMember")
+                        .WithMany()
+                        .HasForeignKey("RecordedByMemberId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("ApprovedByMember");
+
                     b.Navigation("Contribution");
 
                     b.Navigation("Group");
 
                     b.Navigation("Member");
+
+                    b.Navigation("RecordedByMember");
                 });
 
             modelBuilder.Entity("MySociety.Domain.Entities.Resolution", b =>
@@ -1098,8 +1429,15 @@ namespace MySociety.Infrastructure.Persistence.Migrations
                     b.Navigation("Minute");
                 });
 
+            modelBuilder.Entity("MySociety.Domain.Entities.Asset", b =>
+                {
+                    b.Navigation("MaintenanceRecords");
+                });
+
             modelBuilder.Entity("MySociety.Domain.Entities.Group", b =>
                 {
+                    b.Navigation("Assets");
+
                     b.Navigation("CommitteeMembers");
 
                     b.Navigation("Contributions");
@@ -1107,6 +1445,8 @@ namespace MySociety.Infrastructure.Persistence.Migrations
                     b.Navigation("Expenses");
 
                     b.Navigation("GroupExpenses");
+
+                    b.Navigation("GroupIncomes");
 
                     b.Navigation("LedgerEntries");
 
@@ -1130,6 +1470,8 @@ namespace MySociety.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("MySociety.Domain.Entities.Member", b =>
                 {
+                    b.Navigation("AssetsCreated");
+
                     b.Navigation("Contributions");
 
                     b.Navigation("ExpensesApproved");
@@ -1138,7 +1480,11 @@ namespace MySociety.Infrastructure.Persistence.Migrations
 
                     b.Navigation("GroupExpensesCreated");
 
+                    b.Navigation("GroupIncomesCreated");
+
                     b.Navigation("LedgerEntries");
+
+                    b.Navigation("MaintenanceRecordsCreated");
 
                     b.Navigation("Payments");
                 });

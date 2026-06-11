@@ -40,9 +40,10 @@ public class DatabaseSeeder
         var demoUser = new User
         {
             Id = Guid.Parse("11111111-1111-1111-1111-111111111101"),
-            Username = "demo",
+            Username = "user_9000000001",
             Email = "demo@example.com",
             Name = "Demo User",
+            Phone = "9000000001",
             PasswordHash = passwordHash,
             CreatedAt = DateTime.UtcNow
         };

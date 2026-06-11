@@ -162,12 +162,17 @@ public class LedgerService : ILedgerService
             .Select(x => x.Amount)
             .ToListAsync(cancellationToken);
 
+        var otherInflows = await _dbContext.GroupIncomes
+            .Where(x => x.GroupId == groupId)
+            .Select(x => x.Amount)
+            .ToListAsync(cancellationToken);
+
         var outflows = await _dbContext.GroupExpenses
             .Where(x => x.GroupId == groupId && x.FundType == GroupFundType.Maintenance)
             .Select(x => x.Amount)
             .ToListAsync(cancellationToken);
 
-        var inflowTotal = openingBalance + paymentInflows.Sum();
+        var inflowTotal = openingBalance + paymentInflows.Sum() + otherInflows.Sum();
         var outflowTotal = outflows.Sum();
 
         return new FundBalanceDto(
@@ -230,7 +235,7 @@ public class LedgerService : ILedgerService
             .AsNoTracking()
             .Include(x => x.Member)
             .ThenInclude(x => x.User)
-            .Where(x => x.GroupId == groupId)
+            .Where(x => x.GroupId == groupId && x.Status == PaymentStatus.Approved)
             .ToListAsync(cancellationToken);
 
         var corpusPayments = await _dbContext.LedgerEntries
@@ -244,6 +249,11 @@ public class LedgerService : ILedgerService
             .ToListAsync(cancellationToken);
 
         var societyExpenses = await _dbContext.GroupExpenses
+            .AsNoTracking()
+            .Where(x => x.GroupId == groupId)
+            .ToListAsync(cancellationToken);
+
+        var societyIncomes = await _dbContext.GroupIncomes
             .AsNoTracking()
             .Where(x => x.GroupId == groupId)
             .ToListAsync(cancellationToken);
@@ -291,6 +301,17 @@ public class LedgerService : ILedgerService
                 $"Corpus payment · {corpusPayment.Member.User.Name}",
                 GroupFundType.Corpus.ToString(),
                 corpusPayment.Amount,
+                0m));
+        }
+
+        foreach (var income in societyIncomes)
+        {
+            rawLines.Add((
+                income.Id,
+                ExpenseDateRules.NormalizeToUtcDate(income.IncomeDate),
+                income.Description,
+                GroupFundType.Maintenance.ToString(),
+                income.Amount,
                 0m));
         }
 

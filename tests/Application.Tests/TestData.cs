@@ -57,7 +57,9 @@ internal static class TestData
         string name = "Test Group",
         decimal openingMaintenanceBalance = 0m,
         decimal openingCorpusBalance = 0m,
-        decimal creatorOpeningBalance = 0m) =>
+        decimal creatorOpeningBalance = 0m,
+        string? tagline = null,
+        string? logoUrl = null) =>
         new(
             name,
             GroupType.Friends,
@@ -66,7 +68,9 @@ internal static class TestData
             ContributionFrequency.Quarterly,
             openingMaintenanceBalance,
             openingCorpusBalance,
-            creatorOpeningBalance);
+            creatorOpeningBalance,
+            Tagline: tagline,
+            LogoUrl: logoUrl);
 
     public static GroupService CreateGroupService(AppDbContext context) =>
         new(

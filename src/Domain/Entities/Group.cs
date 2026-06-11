@@ -14,6 +14,10 @@ public class Group : BaseEntity
 
     public string Name { get; set; } = string.Empty;
 
+    public string? Tagline { get; set; }
+
+    public string? LogoUrl { get; set; }
+
     public GroupType Type { get; set; }
 
     public ContributionModel ContributionModel { get; set; }
@@ -40,6 +44,8 @@ public class Group : BaseEntity
 
     public ICollection<GroupExpense> GroupExpenses { get; set; } = [];
 
+    public ICollection<GroupIncome> GroupIncomes { get; set; } = [];
+
     public ICollection<LedgerEntry> LedgerEntries { get; set; } = [];
 
     public ICollection<CommitteeMember> CommitteeMembers { get; set; } = [];
@@ -49,6 +55,8 @@ public class Group : BaseEntity
     public ICollection<OpenMatter> OpenMatters { get; set; } = [];
 
     public ICollection<Resolution> Resolutions { get; set; } = [];
+
+    public ICollection<Asset> Assets { get; set; } = [];
 
 }
 

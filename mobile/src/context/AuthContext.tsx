@@ -21,8 +21,8 @@ interface AuthState {
 }
 
 interface AuthContextValue extends AuthState {
-  login: (username: string, password: string) => Promise<void>;
-  register: (username: string, email: string, name: string, password: string) => Promise<void>;
+  login: (phone: string, password: string) => Promise<void>;
+  register: (phone: string, email: string, name: string, password: string) => Promise<void>;
   completeLogin: (response: LoginResponse) => Promise<void>;
   logout: () => Promise<void>;
   setActiveMembership: (memberId: string, groupId: string) => Promise<void>;
@@ -130,16 +130,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const login = useCallback(
-    async (username: string, password: string) => {
-      const response = await api.login({ username, password });
+    async (phone: string, password: string) => {
+      const response = await api.login({ phone, password });
       await completeLogin(response);
     },
     [completeLogin],
   );
 
   const register = useCallback(
-    async (username: string, email: string, name: string, password: string) => {
-      const response = await api.register({ username, email, name, password });
+    async (phone: string, email: string, name: string, password: string) => {
+      const response = await api.register({ phone, email, name, password });
       await completeLogin(response);
     },
     [completeLogin],

@@ -4,10 +4,12 @@ import { ActivityIndicator, View } from 'react-native';
 import { useAuth } from '../context/AuthContext';
 import { AddExpenseScreen } from '../screens/AddExpenseScreen';
 import { AddGroupExpenseScreen } from '../screens/AddGroupExpenseScreen';
+import { AddGroupIncomeScreen } from '../screens/AddGroupIncomeScreen';
 import { GroupFundsScreen } from '../screens/GroupFundsScreen';
 import { AddMemberScreen } from '../screens/AddMemberScreen';
 import { ContributionReportScreen } from '../screens/ContributionReportScreen';
 import { CreateGroupScreen } from '../screens/CreateGroupScreen';
+import { GroupSettingsScreen } from '../screens/GroupSettingsScreen';
 import { EditMemberScreen } from '../screens/EditMemberScreen';
 import { LedgerScreen } from '../screens/LedgerScreen';
 import { ActivateAccountScreen } from '../screens/ActivateAccountScreen';
@@ -21,6 +23,11 @@ import { MeetingsScreen } from '../screens/MeetingsScreen';
 import { AddMeetingScreen } from '../screens/AddMeetingScreen';
 import { MeetingDetailScreen } from '../screens/MeetingDetailScreen';
 import { ResolutionsScreen } from '../screens/ResolutionsScreen';
+import { NotificationsScreen } from '../screens/NotificationsScreen';
+import { AssetRegisterScreen } from '../screens/AssetRegisterScreen';
+import { AssetDetailScreen } from '../screens/AssetDetailScreen';
+import { AddEditAssetScreen } from '../screens/AddEditAssetScreen';
+import { LogMaintenanceScreen } from '../screens/LogMaintenanceScreen';
 import { colors } from '../theme';
 import { MainTabNavigator } from './MainTabNavigator';
 import { AuthStackParamList, MainStackParamList } from './types';
@@ -82,9 +89,19 @@ function MainNavigator() {
         options={{ headerShown: false }}
       />
       <MainStack.Screen
+        name="Notifications"
+        component={NotificationsScreen}
+        options={{ title: 'Notifications' }}
+      />
+      <MainStack.Screen
         name="CreateGroup"
         component={CreateGroupScreen}
         options={{ title: 'Create group' }}
+      />
+      <MainStack.Screen
+        name="GroupSettings"
+        component={GroupSettingsScreen}
+        options={{ title: 'Group profile' }}
       />
       <MainStack.Screen name="Members" component={MembersScreen} options={{ title: 'Members' }} />
       <MainStack.Screen
@@ -111,6 +128,11 @@ function MainNavigator() {
         name="AddGroupExpense"
         component={AddGroupExpenseScreen}
         options={{ title: 'Group expense' }}
+      />
+      <MainStack.Screen
+        name="AddGroupIncome"
+        component={AddGroupIncomeScreen}
+        options={{ title: 'Record income' }}
       />
       <MainStack.Screen name="Ledger" component={LedgerScreen} options={{ title: 'Ledger' }} />
       <MainStack.Screen
@@ -139,6 +161,26 @@ function MainNavigator() {
         name="Resolutions"
         component={ResolutionsScreen}
         options={{ title: 'Group decisions' }}
+      />
+      <MainStack.Screen
+        name="AssetRegister"
+        component={AssetRegisterScreen}
+        options={{ title: 'Asset register' }}
+      />
+      <MainStack.Screen
+        name="AssetDetail"
+        component={AssetDetailScreen}
+        options={{ title: 'Asset detail' }}
+      />
+      <MainStack.Screen
+        name="AddEditAsset"
+        component={AddEditAssetScreen}
+        options={{ title: 'Asset' }}
+      />
+      <MainStack.Screen
+        name="LogMaintenance"
+        component={LogMaintenanceScreen}
+        options={{ title: 'Log maintenance' }}
       />
     </MainStack.Navigator>
   );

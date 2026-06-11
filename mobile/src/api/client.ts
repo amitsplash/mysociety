@@ -13,10 +13,12 @@ interface RequestOptions {
 
 export class ApiClientError extends Error {
   status: number;
+  code?: string;
 
-  constructor(message: string, status: number) {
+  constructor(message: string, status: number, code?: string) {
     super(message);
     this.status = status;
+    this.code = code;
   }
 }
 
@@ -92,7 +94,11 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
 
   if (!response.ok) {
     const err = data as ApiError | null;
-    throw new ApiClientError(err?.error ?? `Request failed (${response.status})`, response.status);
+    throw new ApiClientError(
+      err?.error ?? `Request failed (${response.status})`,
+      response.status,
+      err?.code,
+    );
   }
 
   return data as T;
@@ -135,6 +141,19 @@ export const api = {
       method: 'POST',
       body,
       token,
+    }),
+
+  updateGroup: (
+    groupId: string,
+    body: import('./types').UpdateGroupRequest,
+    token: string,
+    memberId: string,
+  ) =>
+    apiRequest<import('./types').GroupResponse>(`/api/groups/${groupId}`, {
+      method: 'PUT',
+      body,
+      token,
+      memberId,
     }),
 
   deleteGroup: (groupId: string, token: string, memberId: string) =>
@@ -284,9 +303,35 @@ export const api = {
     token: string,
     actingMemberId: string,
   ) =>
-    apiRequest<unknown>('/api/payments', {
+    apiRequest<import('./types').RecordPaymentResponse>('/api/payments', {
       method: 'POST',
       body,
+      token,
+      memberId: actingMemberId,
+    }),
+
+  getPendingPaymentSubmissions: (groupId: string, token: string, actingMemberId: string) =>
+    apiRequest<import('./types').PendingPaymentSubmission[]>(
+      `/api/groups/${groupId}/payments/pending-approval`,
+      { token, memberId: actingMemberId },
+    ),
+
+  getMyPendingPaymentSubmissions: (token: string, actingMemberId: string) =>
+    apiRequest<import('./types').PendingPaymentSubmission[]>('/api/payments/my-pending-approval', {
+      token,
+      memberId: actingMemberId,
+    }),
+
+  approvePaymentSubmission: (submissionId: string, token: string, actingMemberId: string) =>
+    apiRequest<unknown>(`/api/payments/submissions/${submissionId}/approve`, {
+      method: 'POST',
+      token,
+      memberId: actingMemberId,
+    }),
+
+  rejectPaymentSubmission: (submissionId: string, token: string, actingMemberId: string) =>
+    apiRequest<unknown>(`/api/payments/submissions/${submissionId}/reject`, {
+      method: 'POST',
       token,
       memberId: actingMemberId,
     }),
@@ -333,6 +378,24 @@ export const api = {
     memberId: string,
   ) =>
     apiRequest<import('./types').GroupExpenseResponse>('/api/group-expenses', {
+      method: 'POST',
+      body,
+      token,
+      memberId,
+    }),
+
+  getGroupIncomes: (groupId: string, token: string, memberId: string) =>
+    apiRequest<import('./types').GroupIncomeResponse[]>(
+      `/api/groups/${groupId}/group-incomes`,
+      { token, memberId },
+    ),
+
+  createGroupIncome: (
+    body: import('./types').CreateGroupIncomeRequest,
+    token: string,
+    memberId: string,
+  ) =>
+    apiRequest<import('./types').GroupIncomeResponse>('/api/group-incomes', {
       method: 'POST',
       body,
       token,
@@ -583,6 +646,103 @@ export const api = {
   ) =>
     apiRequest<import('./types').ResolutionResponse>(`/api/groups/${groupId}/resolutions/${id}`, {
       method: 'PUT',
+      body,
+      token,
+      memberId,
+    }),
+
+  getNotifications: (token: string, skip = 0, take = 50) =>
+    apiRequest<import('./types').NotificationResponse[]>(
+      `/api/notifications?skip=${skip}&take=${take}`,
+      { token },
+    ),
+
+  getUnreadNotificationCount: (token: string) =>
+    apiRequest<import('./types').UnreadNotificationCountResponse>(
+      '/api/notifications/unread-count',
+      { token },
+    ),
+
+  markNotificationRead: (id: string, token: string) =>
+    apiRequest<import('./types').NotificationResponse>(`/api/notifications/${id}/read`, {
+      method: 'PATCH',
+      token,
+    }),
+
+  markAllNotificationsRead: (token: string) =>
+    apiRequest<void>('/api/notifications/read-all', {
+      method: 'PATCH',
+      token,
+    }),
+
+  getAssets: (groupId: string, token: string, memberId: string) =>
+    apiRequest<import('./types').AssetResponse[]>(`/api/groups/${groupId}/assets`, {
+      token,
+      memberId,
+    }),
+
+  getAsset: (groupId: string, assetId: string, token: string, memberId: string) =>
+    apiRequest<import('./types').AssetResponse>(
+      `/api/groups/${groupId}/assets/${assetId}`,
+      { token, memberId },
+    ),
+
+  getAssetMaintenanceSummary: (groupId: string, token: string, memberId: string) =>
+    apiRequest<import('./types').AssetMaintenanceSummaryResponse>(
+      `/api/groups/${groupId}/assets/maintenance-summary`,
+      { token, memberId },
+    ),
+
+  createAsset: (
+    body: import('./types').CreateAssetRequest,
+    token: string,
+    memberId: string,
+  ) =>
+    apiRequest<import('./types').AssetResponse>('/api/assets', {
+      method: 'POST',
+      body,
+      token,
+      memberId,
+    }),
+
+  updateAsset: (
+    assetId: string,
+    body: import('./types').UpdateAssetRequest,
+    token: string,
+    memberId: string,
+  ) =>
+    apiRequest<import('./types').AssetResponse>(`/api/assets/${assetId}`, {
+      method: 'PUT',
+      body,
+      token,
+      memberId,
+    }),
+
+  decommissionAsset: (assetId: string, token: string, memberId: string) =>
+    apiRequest<import('./types').AssetResponse>(`/api/assets/${assetId}`, {
+      method: 'DELETE',
+      token,
+      memberId,
+    }),
+
+  getMaintenanceRecords: (
+    groupId: string,
+    assetId: string,
+    token: string,
+    memberId: string,
+  ) =>
+    apiRequest<import('./types').MaintenanceRecordResponse[]>(
+      `/api/groups/${groupId}/assets/${assetId}/maintenance-records`,
+      { token, memberId },
+    ),
+
+  createMaintenanceRecord: (
+    body: import('./types').CreateMaintenanceRecordRequest,
+    token: string,
+    memberId: string,
+  ) =>
+    apiRequest<import('./types').MaintenanceRecordResponse>('/api/maintenance-records', {
+      method: 'POST',
       body,
       token,
       memberId,

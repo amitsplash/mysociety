@@ -4,14 +4,18 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useCallback, useMemo, useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { api } from '../api/client';
-import type { ContributionResponse, PendingContributionItem } from '../api/types';
+import type {
+  ContributionResponse,
+  MemberPendingContributions,
+  PendingContributionItem,
+  PendingPaymentSubmission,
+} from '../api/types';
 import { BottomSheet } from '../components/BottomSheet';
 import { Button } from '../components/Button';
 import { Input } from '../components/Input';
 import { MonthYearSelect } from '../components/MonthYearSelect';
 import { Screen } from '../components/Screen';
 import { SectionHeader } from '../components/SectionHeader';
-import { SpendingChart } from '../components/SpendingChart';
 import { StatusBadge } from '../components/StatusBadge';
 import { SurfaceCard } from '../components/SurfaceCard';
 import { useAuth } from '../context/AuthContext';
@@ -27,39 +31,40 @@ import {
   getCurrentMonth,
 } from '../utils/contributionMonthRange';
 import { confirm } from '../utils/confirm';
-import { formatCurrency, formatEnumLabel } from '../utils/format';
+import { formatCurrency, formatDateShort, formatEnumLabel } from '../utils/format';
+import { computePaymentAllocation, ADVANCE_CREDIT_PERIOD } from '../utils/paymentAllocation';
 
 type Props = CompositeScreenProps<
   BottomTabScreenProps<MainTabParamList, 'Payments'>,
   NativeStackScreenProps<MainStackParamList>
 >;
 
-type PayTarget = {
-  id: string;
+type MemberPayTarget = {
   memberId: string;
   memberName?: string;
-  period: string;
-  amount: number;
-  paidAmount: number;
-  remainingAmount: number;
+  totalOutstanding: number;
+  items: PendingContributionItem[];
 };
 
-function toPayTarget(item: ContributionResponse | PendingContributionItem, memberId: string, memberName?: string): PayTarget {
-  const paidAmount = item.paidAmount ?? 0;
-  const remainingAmount =
-    'remainingAmount' in item && item.remainingAmount != null
-      ? item.remainingAmount
-      : Math.max(0, item.amount - paidAmount);
+function toPendingItems(
+  items: (ContributionResponse | PendingContributionItem)[],
+): PendingContributionItem[] {
+  return items.map((item) => {
+    const paidAmount = item.paidAmount ?? 0;
+    const remainingAmount =
+      'remainingAmount' in item && item.remainingAmount != null
+        ? item.remainingAmount
+        : Math.max(0, item.amount - paidAmount);
 
-  return {
-    id: item.id,
-    memberId,
-    memberName,
-    period: item.period,
-    amount: item.amount,
-    paidAmount,
-    remainingAmount,
-  };
+    return {
+      id: item.id,
+      period: item.period,
+      amount: item.amount,
+      paidAmount,
+      remainingAmount,
+      internalRemark: 'internalRemark' in item ? item.internalRemark : null,
+    };
+  });
 }
 
 export function ContributionsScreen({ navigation }: Props) {
@@ -72,9 +77,11 @@ export function ContributionsScreen({ navigation }: Props) {
   const [draftFromMonth, setDraftFromMonth] = useState(getCurrentMonth);
   const [draftToMonth, setDraftToMonth] = useState(getCurrentMonth);
   const [generating, setGenerating] = useState(false);
-  const [payingId, setPayingId] = useState<string | null>(null);
-  const [payTarget, setPayTarget] = useState<PayTarget | null>(null);
+  const [payingMemberId, setPayingMemberId] = useState<string | null>(null);
+  const [payTarget, setPayTarget] = useState<MemberPayTarget | null>(null);
   const [paymentAmount, setPaymentAmount] = useState('');
+  const [expandedMemberId, setExpandedMemberId] = useState<string | null>(null);
+  const [submissionActionId, setSubmissionActionId] = useState<string | null>(null);
 
   const { data: group } = useAsyncData(
     useCallback(() => {
@@ -98,6 +105,28 @@ export function ContributionsScreen({ navigation }: Props) {
     { errorMessage: 'Failed to load pending collections', loadOnFocus: hasActiveGroup && isAdmin },
   );
 
+  const { data: pendingPaymentSubmissions, refresh: refreshPaymentSubmissions } = useAsyncData(
+    useCallback(() => {
+      if (!hasActiveGroup || !isAdmin || !token || !memberId || !groupId) {
+        return Promise.resolve([]);
+      }
+      return api.getPendingPaymentSubmissions(groupId, token, memberId);
+    }, [hasActiveGroup, isAdmin, groupId, token, memberId]),
+    [hasActiveGroup, isAdmin, groupId, token, memberId],
+    { errorMessage: 'Failed to load payment approvals', loadOnFocus: hasActiveGroup && isAdmin },
+  );
+
+  const { data: myPendingPaymentSubmissions, refresh: refreshMyPaymentSubmissions } = useAsyncData(
+    useCallback(() => {
+      if (!hasActiveGroup || isAdmin || !token || !memberId) {
+        return Promise.resolve([]);
+      }
+      return api.getMyPendingPaymentSubmissions(token, memberId);
+    }, [hasActiveGroup, isAdmin, token, memberId]),
+    [hasActiveGroup, isAdmin, token, memberId],
+    { errorMessage: 'Failed to load submitted payments', loadOnFocus: hasActiveGroup && !isAdmin },
+  );
+
   const { data, loading, refreshing, refresh } = useAsyncData(
     useCallback(() => {
       if (!hasActiveGroup || !token || !memberId) {
@@ -113,8 +142,13 @@ export function ContributionsScreen({ navigation }: Props) {
   );
 
   const refreshAll = useCallback(async () => {
-    await Promise.all([refresh(), refreshPending()]);
-  }, [refresh, refreshPending]);
+    await Promise.all([
+      refresh(),
+      refreshPending(),
+      refreshPaymentSubmissions(),
+      refreshMyPaymentSubmissions(),
+    ]);
+  }, [refresh, refreshPending, refreshPaymentSubmissions, refreshMyPaymentSubmissions]);
 
   const draftPeriodKey = useMemo(() => {
     if (!draftFromMonth || !draftToMonth) return '';
@@ -152,27 +186,25 @@ export function ContributionsScreen({ navigation }: Props) {
     });
   }, [items, isAdmin]);
 
-  const chartData = useMemo(() => {
-    const byPeriod = new Map<string, number>();
-    for (const item of items) {
-      byPeriod.set(item.period, (byPeriod.get(item.period) ?? 0) + item.amount);
-    }
-    const sorted = [...byPeriod.entries()].sort((a, b) => a[0].localeCompare(b[0])).slice(-3);
-    if (sorted.length === 0) {
-      return { total: 0, bars: [{ label: '—', amount: 0 }] };
-    }
-    const bars = sorted.map(([label, amount]) => ({
-      label: formatContributionPeriodLabel(label),
-      amount,
-    }));
-    const total = sorted[sorted.length - 1]?.[1] ?? 0;
-    return { total, bars };
-  }, [items]);
-
-  const openPaySheet = (target: PayTarget) => {
+  const openPaySheet = (target: MemberPayTarget) => {
     setPayTarget(target);
-    setPaymentAmount(String(target.remainingAmount));
+    setPaymentAmount(String(target.totalOutstanding));
   };
+
+  const toggleMemberDetails = (memberId: string) => {
+    setExpandedMemberId((current) => (current === memberId ? null : memberId));
+  };
+
+  const paymentPreview = useMemo(() => {
+    if (!payTarget) {
+      return [];
+    }
+    const amount = Number(paymentAmount);
+    if (!amount || amount <= 0) {
+      return [];
+    }
+    return computePaymentAllocation(payTarget.items, amount);
+  }, [payTarget, paymentAmount]);
 
   const closePaySheet = () => {
     setPayTarget(null);
@@ -258,35 +290,170 @@ export function ContributionsScreen({ navigation }: Props) {
       showError('Enter a valid amount');
       return;
     }
-    if (amount > payTarget.remainingAmount) {
-      showError(`Amount cannot exceed ${formatCurrency(payTarget.remainingAmount)}`);
-      return;
-    }
 
-    setPayingId(payTarget.id);
+    setPayingMemberId(payTarget.memberId);
     try {
-      await api.recordPayment(
-        { memberId: payTarget.memberId, amount, contributionId: payTarget.id },
+      const result = await api.recordPayment(
+        { memberId: payTarget.memberId, amount },
         token,
         memberId,
       );
-      const isFull = amount >= payTarget.remainingAmount;
-      showSuccess(
-        isAdmin && payTarget.memberId !== memberId
-          ? isFull
-            ? `Full payment recorded for ${payTarget.memberName ?? 'member'}`
-            : `Partial payment of ${formatCurrency(amount)} recorded`
-          : isFull
-            ? 'Payment recorded'
-            : `Partial payment of ${formatCurrency(amount)} recorded`,
-      );
+      const awaitingApproval = result.status === 'PendingApproval';
+      const advanceMsg =
+        result.advanceAmount > 0
+          ? ` · ${formatCurrency(result.advanceAmount)} for upcoming contributions`
+          : '';
+
+      if (awaitingApproval) {
+        showSuccess(
+          `Payment of ${formatCurrency(amount)} submitted for admin approval${advanceMsg}`,
+        );
+      } else if (isAdmin && payTarget.memberId !== memberId) {
+        showSuccess(`Payment of ${formatCurrency(amount)} recorded${advanceMsg}`);
+      } else {
+        showSuccess(`Payment of ${formatCurrency(amount)} recorded${advanceMsg}`);
+      }
       closePaySheet();
       await refreshAll();
     } catch (e) {
       showError(e instanceof Error ? e.message : 'Payment failed');
     } finally {
-      setPayingId(null);
+      setPayingMemberId(null);
     }
+  };
+
+  const approveSubmission = async (submissionId: string) => {
+    if (!token || !memberId) {
+      return;
+    }
+    setSubmissionActionId(submissionId);
+    try {
+      await api.approvePaymentSubmission(submissionId, token, memberId);
+      showSuccess('Payment approved');
+      await refreshAll();
+    } catch (e) {
+      showError(e instanceof Error ? e.message : 'Approve failed');
+    } finally {
+      setSubmissionActionId(null);
+    }
+  };
+
+  const rejectSubmission = async (submissionId: string) => {
+    if (!token || !memberId) {
+      return;
+    }
+    setSubmissionActionId(submissionId);
+    try {
+      await api.rejectPaymentSubmission(submissionId, token, memberId);
+      showSuccess('Payment rejected');
+      await refreshAll();
+    } catch (e) {
+      showError(e instanceof Error ? e.message : 'Reject failed');
+    } finally {
+      setSubmissionActionId(null);
+    }
+  };
+
+  const renderPaymentSubmissionCard = (submission: PendingPaymentSubmission, showActions: boolean) => (
+    <SurfaceCard key={submission.submissionId} style={styles.submissionCard}>
+      <View style={styles.submissionHeader}>
+        <View style={styles.submissionHeaderLeft}>
+          <Text style={styles.submissionMember}>{submission.memberName}</Text>
+          <Text style={styles.submissionMeta}>
+            {formatDateShort(submission.submittedAt)} · {formatCurrency(submission.totalAmount)}
+          </Text>
+        </View>
+        <StatusBadge label="Pending approval" compact />
+      </View>
+      {submission.allocations.map((row) => (
+        <Text key={row.paymentId} style={styles.submissionAllocation}>
+          {row.period === ADVANCE_CREDIT_PERIOD
+            ? row.period
+            : formatContributionPeriodLabel(row.period)}{' '}
+          · {formatCurrency(row.amountApplied)}
+        </Text>
+      ))}
+      {showActions ? (
+        <View style={styles.submissionActions}>
+          <Button
+            label="Approve"
+            onPress={() => approveSubmission(submission.submissionId)}
+            loading={submissionActionId === submission.submissionId}
+            style={styles.submissionActionBtn}
+          />
+          <Button
+            label="Reject"
+            variant="danger"
+            onPress={() => rejectSubmission(submission.submissionId)}
+            disabled={submissionActionId === submission.submissionId}
+            style={styles.submissionActionBtn}
+          />
+        </View>
+      ) : null}
+    </SurfaceCard>
+  );
+
+  const renderPendingItemDetails = (item: PendingContributionItem) => {
+    const isPartial = item.paidAmount > 0;
+    return (
+      <View key={item.id} style={styles.pendingDetailRow}>
+        <Text style={styles.pendingPeriod}>{formatContributionPeriodLabel(item.period)}</Text>
+        <Text style={styles.pendingMeta}>
+          {formatCurrency(item.amount)} billed
+          {isPartial
+            ? ` · ${formatCurrency(item.paidAmount)} paid · ${formatCurrency(item.remainingAmount)} left`
+            : ` · ${formatCurrency(item.remainingAmount)} due`}
+        </Text>
+        {isPartial ? <StatusBadge label="Partial" compact /> : null}
+        {item.internalRemark ? (
+          <Text style={styles.internalRemark}>{item.internalRemark}</Text>
+        ) : null}
+      </View>
+    );
+  };
+
+  const renderMemberPendingCard = (member: MemberPendingContributions) => {
+    const isExpanded = expandedMemberId === member.memberId;
+    return (
+      <SurfaceCard key={member.memberId} style={styles.memberPendingCard}>
+        <Pressable
+          style={styles.memberPendingHeader}
+          onPress={() => toggleMemberDetails(member.memberId)}>
+          <View style={styles.memberPendingHeaderLeft}>
+            <Text style={styles.memberPendingName}>{member.memberName}</Text>
+            <Text style={styles.memberPendingCount}>
+              {member.items.length} pending period{member.items.length === 1 ? '' : 's'}
+            </Text>
+          </View>
+          <View style={styles.memberPendingHeaderRight}>
+            <Text style={styles.memberPendingTotal}>
+              {formatCurrency(member.totalOutstanding)}
+            </Text>
+            <Text style={styles.expandHint}>{isExpanded ? 'Hide' : 'Details'}</Text>
+          </View>
+        </Pressable>
+        {isExpanded ? (
+          <View style={styles.pendingDetails}>
+            {member.items.map(renderPendingItemDetails)}
+          </View>
+        ) : null}
+        <Pressable
+          style={styles.memberPayBtn}
+          onPress={() =>
+            openPaySheet({
+              memberId: member.memberId,
+              memberName: member.memberName,
+              totalOutstanding: member.totalOutstanding,
+              items: member.items,
+            })
+          }
+          disabled={payingMemberId === member.memberId}>
+          <Text style={styles.memberPayBtnText}>
+            {payingMemberId === member.memberId ? 'Recording…' : 'Record payment'}
+          </Text>
+        </Pressable>
+      </SurfaceCard>
+    );
   };
 
   const ListHeader = (
@@ -299,12 +466,6 @@ export function ContributionsScreen({ navigation }: Props) {
           : 'View and settle your pending contributions.'}
       </Text>
 
-      <SpendingChart
-        totalLabel="Contribution activity"
-        totalAmount={chartData.total}
-        bars={chartData.bars}
-      />
-
       {isAdmin && group ? (
         <SurfaceCard>
           <SectionHeader title="Contributions" />
@@ -314,6 +475,21 @@ export function ContributionsScreen({ navigation }: Props) {
           </Text>
           <Button label="Generate contributions" onPress={openGenerateSheet} />
         </SurfaceCard>
+      ) : null}
+
+      {isAdmin ? (
+        <View style={styles.pendingSection}>
+          <SectionHeader title="Payments awaiting approval" />
+          {(pendingPaymentSubmissions ?? []).length === 0 ? (
+            <SurfaceCard variant="dashed">
+              <Text style={styles.emptyPendingBody}>No member payments waiting for approval.</Text>
+            </SurfaceCard>
+          ) : (
+            (pendingPaymentSubmissions ?? []).map((submission) =>
+              renderPaymentSubmissionCard(submission, true),
+            )
+          )}
+        </View>
       ) : null}
 
       {isAdmin ? (
@@ -331,45 +507,16 @@ export function ContributionsScreen({ navigation }: Props) {
               <Text style={styles.emptyPendingBody}>No pending or partially paid contributions.</Text>
             </SurfaceCard>
           ) : (
-            pendingSummary.members.map((member) => (
-              <SurfaceCard key={member.memberId} style={styles.memberPendingCard}>
-                <View style={styles.memberPendingHeader}>
-                  <Text style={styles.memberPendingName}>{member.memberName}</Text>
-                  <Text style={styles.memberPendingTotal}>
-                    {formatCurrency(member.totalOutstanding)} due
-                  </Text>
-                </View>
-                {member.items.map((item) => {
-                  const isPartial = item.paidAmount > 0;
-                  return (
-                    <View key={item.id} style={styles.pendingRow}>
-                      <View style={styles.pendingRowLeft}>
-                        <Text style={styles.pendingPeriod}>
-                          {formatContributionPeriodLabel(item.period)}
-                        </Text>
-                        <Text style={styles.pendingMeta}>
-                          {formatCurrency(item.amount)} billed
-                          {isPartial
-                            ? ` · ${formatCurrency(item.paidAmount)} paid · ${formatCurrency(item.remainingAmount)} left`
-                            : ` · ${formatCurrency(item.remainingAmount)} due`}
-                        </Text>
-                        {isPartial ? <StatusBadge label="Partial" compact /> : null}
-                      </View>
-                      <Pressable
-                        style={styles.payBtn}
-                        onPress={() =>
-                          openPaySheet(toPayTarget(item, member.memberId, member.memberName))
-                        }
-                        disabled={payingId === item.id}>
-                        <Text style={styles.payBtnText}>
-                          {payingId === item.id ? '…' : 'Record'}
-                        </Text>
-                      </Pressable>
-                    </View>
-                  );
-                })}
-              </SurfaceCard>
-            ))
+            pendingSummary.members.map(renderMemberPendingCard)
+          )}
+        </View>
+      ) : null}
+
+      {!isAdmin && (myPendingPaymentSubmissions ?? []).length > 0 ? (
+        <View style={styles.pendingSection}>
+          <SectionHeader title="Awaiting admin approval" />
+          {(myPendingPaymentSubmissions ?? []).map((submission) =>
+            renderPaymentSubmissionCard(submission, false),
           )}
         </View>
       ) : null}
@@ -383,37 +530,53 @@ export function ContributionsScreen({ navigation }: Props) {
               <Text style={styles.emptyPendingBody}>No pending contributions right now.</Text>
             </SurfaceCard>
           ) : (
-            myPendingItems.map((item) => {
-              const paid = item.paidAmount ?? 0;
-              const remaining = item.remainingAmount ?? Math.max(0, item.amount - paid);
-              const isPartial = paid > 0;
+            (() => {
+              const pendingItems = toPendingItems(myPendingItems);
+              const totalOutstanding = pendingItems.reduce(
+                (sum, item) => sum + item.remainingAmount,
+                0,
+              );
+              const isExpanded = expandedMemberId === memberId;
               return (
-                <SurfaceCard key={item.id} style={styles.memberPendingCard}>
-                  <View style={styles.pendingRow}>
-                    <View style={styles.pendingRowLeft}>
-                      <Text style={styles.pendingPeriod}>
-                        {formatContributionPeriodLabel(item.period)}
+                <SurfaceCard style={styles.memberPendingCard}>
+                  <Pressable
+                    style={styles.memberPendingHeader}
+                    onPress={() => toggleMemberDetails(memberId)}>
+                    <View style={styles.memberPendingHeaderLeft}>
+                      <Text style={styles.memberPendingName}>Your pending balance</Text>
+                      <Text style={styles.memberPendingCount}>
+                        {pendingItems.length} pending period{pendingItems.length === 1 ? '' : 's'}
                       </Text>
-                      <Text style={styles.pendingMeta}>
-                        {formatCurrency(item.amount)} billed
-                        {isPartial
-                          ? ` · ${formatCurrency(paid)} paid · ${formatCurrency(remaining)} left`
-                          : ` · ${formatCurrency(remaining)} due`}
-                      </Text>
-                      {isPartial ? <StatusBadge label="Partial" compact /> : null}
                     </View>
-                    <Pressable
-                      style={styles.payBtn}
-                      onPress={() => openPaySheet(toPayTarget(item, item.memberId))}
-                      disabled={payingId === item.id}>
-                      <Text style={styles.payBtnText}>
-                        {payingId === item.id ? '…' : 'Pay now'}
+                    <View style={styles.memberPendingHeaderRight}>
+                      <Text style={styles.memberPendingTotal}>
+                        {formatCurrency(totalOutstanding)}
                       </Text>
-                    </Pressable>
-                  </View>
+                      <Text style={styles.expandHint}>{isExpanded ? 'Hide' : 'Details'}</Text>
+                    </View>
+                  </Pressable>
+                  {isExpanded ? (
+                    <View style={styles.pendingDetails}>
+                      {pendingItems.map(renderPendingItemDetails)}
+                    </View>
+                  ) : null}
+                  <Pressable
+                    style={styles.memberPayBtn}
+                    onPress={() =>
+                      openPaySheet({
+                        memberId,
+                        totalOutstanding,
+                        items: pendingItems,
+                      })
+                    }
+                    disabled={payingMemberId === memberId}>
+                    <Text style={styles.memberPayBtnText}>
+                      {payingMemberId === memberId ? 'Recording…' : 'Pay now'}
+                    </Text>
+                  </Pressable>
                 </SurfaceCard>
               );
-            })
+            })()
           )}
         </View>
       ) : null}
@@ -518,27 +681,48 @@ export function ContributionsScreen({ navigation }: Props) {
             {payTarget.memberName ? (
               <Text style={styles.sheetMember}>{payTarget.memberName}</Text>
             ) : null}
-            <Text style={styles.sheetPeriod}>{formatContributionPeriodLabel(payTarget.period)}</Text>
-            <Text style={styles.sheetDueLabel}>Remaining balance</Text>
-            <Text style={styles.sheetAmount}>{formatCurrency(payTarget.remainingAmount)}</Text>
-            {payTarget.paidAmount > 0 ? (
-              <Text style={styles.sheetHint}>
-                {formatCurrency(payTarget.paidAmount)} already received of {formatCurrency(payTarget.amount)}.
-              </Text>
-            ) : null}
+            <Text style={styles.sheetDueLabel}>Total pending</Text>
+            <Text style={styles.sheetAmount}>{formatCurrency(payTarget.totalOutstanding)}</Text>
+            <Text style={styles.sheetHint}>
+              {isAdmin
+                ? 'Pending amounts are cleared oldest first. Any extra is held as advance for upcoming contributions.'
+                : 'Your payment will be submitted for admin approval before it is applied to pending amounts.'}
+            </Text>
             <Input
               label="Amount received (₹)"
               value={paymentAmount}
               onChangeText={setPaymentAmount}
               keyboardType="decimal-pad"
-              placeholder={String(payTarget.remainingAmount)}
+              placeholder={String(payTarget.totalOutstanding)}
             />
             <Button
-              label={`Receive full ${formatCurrency(payTarget.remainingAmount)}`}
+              label={`Receive full ${formatCurrency(payTarget.totalOutstanding)}`}
               variant="secondary"
-              onPress={() => setPaymentAmount(String(payTarget.remainingAmount))}
+              onPress={() => setPaymentAmount(String(payTarget.totalOutstanding))}
             />
-            <Button label="Record payment" onPress={pay} loading={payingId === payTarget.id} />
+            {paymentPreview.length > 0 ? (
+              <View style={styles.allocationPreview}>
+                <Text style={styles.allocationTitle}>Adjustment preview</Text>
+                {paymentPreview.map((row) => (
+                  <Text key={`${row.period}-${row.amountApplied}`} style={styles.allocationRow}>
+                    {row.period === ADVANCE_CREDIT_PERIOD
+                      ? row.period
+                      : formatContributionPeriodLabel(row.period)}{' '}
+                    · {formatCurrency(row.amountApplied)}
+                    {row.isAdvance
+                      ? ' · for upcoming contributions'
+                      : row.remainingAfter > 0
+                        ? ` · ${formatCurrency(row.remainingAfter)} left`
+                        : ' · cleared'}
+                  </Text>
+                ))}
+              </View>
+            ) : null}
+            <Button
+              label={isAdmin ? 'Record payment' : 'Submit for approval'}
+              onPress={pay}
+              loading={payingMemberId === payTarget.memberId}
+            />
             <Button label="Cancel" variant="ghost" onPress={closePaySheet} />
           </View>
         ) : null}
@@ -566,23 +750,57 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: spacing.sm,
-  },
-  memberPendingName: { fontSize: 14, fontWeight: '800', color: colors.text, flex: 1 },
-  memberPendingTotal: { fontSize: 13, fontWeight: '700', color: colors.danger },
-  pendingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-    paddingTop: spacing.sm,
-    marginTop: spacing.sm,
     gap: spacing.sm,
   },
-  pendingRowLeft: { flex: 1 },
+  memberPendingHeaderLeft: { flex: 1 },
+  memberPendingHeaderRight: { alignItems: 'flex-end' },
+  memberPendingName: { fontSize: 14, fontWeight: '800', color: colors.text },
+  memberPendingCount: { fontSize: 10, color: colors.textMuted, marginTop: 2 },
+  memberPendingTotal: { fontSize: 15, fontWeight: '800', color: colors.danger },
+  expandHint: { fontSize: 10, color: colors.primary, fontWeight: '700', marginTop: 2 },
+  pendingDetails: {
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    marginTop: spacing.sm,
+    paddingTop: spacing.sm,
+    gap: spacing.sm,
+  },
+  pendingDetailRow: { gap: 4 },
   pendingPeriod: { fontSize: 12, fontWeight: '700', color: colors.text },
-  pendingMeta: { fontSize: 10, color: colors.textMuted, marginTop: 4, lineHeight: 14 },
+  pendingMeta: { fontSize: 10, color: colors.textMuted, lineHeight: 14 },
+  internalRemark: {
+    fontSize: 10,
+    color: colors.textMuted,
+    fontStyle: 'italic',
+    lineHeight: 14,
+    marginTop: 2,
+  },
+  memberPayBtn: {
+    marginTop: spacing.sm,
+    backgroundColor: colors.primary,
+    borderRadius: radii.sm,
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  memberPayBtnText: { fontSize: 12, fontWeight: '800', color: '#fff' },
+  submissionCard: { marginBottom: spacing.sm },
+  submissionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    gap: spacing.sm,
+    marginBottom: spacing.xs,
+  },
+  submissionHeaderLeft: { flex: 1 },
+  submissionMember: { fontSize: 13, fontWeight: '800', color: colors.text },
+  submissionMeta: { fontSize: 10, color: colors.textMuted, marginTop: 2 },
+  submissionAllocation: { fontSize: 10, color: colors.textMuted, lineHeight: 14 },
+  submissionActions: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginTop: spacing.sm,
+  },
+  submissionActionBtn: { flex: 1 },
   emptyPendingTitle: { fontSize: 14, fontWeight: '700', color: colors.text },
   emptyPendingBody: { fontSize: 12, color: colors.textMuted, marginTop: 4 },
   periodHint: { fontSize: 12, color: colors.textMuted, lineHeight: 18, marginBottom: spacing.sm },
@@ -596,15 +814,16 @@ const styles = StyleSheet.create({
     borderRadius: radii.md,
     padding: spacing.sm,
   },
-  payBtn: {
-    backgroundColor: colors.primary,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: radii.sm,
-    flexShrink: 0,
-  },
-  payBtnText: { fontSize: 10, fontWeight: '800', color: '#fff' },
   sheetBody: { paddingBottom: spacing.md },
+  allocationPreview: {
+    backgroundColor: colors.primaryLight,
+    borderRadius: radii.md,
+    padding: spacing.sm,
+    marginBottom: spacing.md,
+    gap: 4,
+  },
+  allocationTitle: { fontSize: 11, fontWeight: '800', color: colors.text },
+  allocationRow: { fontSize: 10, color: colors.textMuted, lineHeight: 14 },
   sheetMember: {
     fontSize: 14,
     fontWeight: '800',

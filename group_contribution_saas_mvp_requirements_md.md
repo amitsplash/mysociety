@@ -22,13 +22,15 @@ The platform must support multiple independent groups (multi-tenant architecture
 - ASP.NET Core Web API (.NET 9 preferred)
 
 ## Database
-- SQLite
+- **PostgreSQL** (Neon, Supabase, or self-hosted) via EF Core Npgsql provider
+- Local/dev: connection string in `ConnectionStrings:DefaultConnection` (pooler endpoints normalized for migrations where needed)
 
 ## ORM
 - Entity Framework Core
 
 ## Mobile App
-- React Native
+- React Native (Expo)
+- Product name: **Society360** (`app.json` display name / slug `society360`)
 
 ## API Documentation
 - Swagger / OpenAPI
@@ -102,13 +104,14 @@ Rules:
 
 **Any registered user** should be able to:
 - **Create a group** — configure contribution settings (type, model, frequency, amount); creator is automatically added as **Admin**
+- Set optional **tagline** at creation (group-specific subtitle shown on Home / Group hub)
 - Set optional **creator opening balance** and square feet (for per-sq-ft groups) at creation
-- Set optional **opening maintenance fund** (`OpeningSocietyBalance`) and **opening corpus fund** (`OpeningCorpusBalance`) at group create
+- Set optional **opening maintenance fund** (`openingMaintenanceBalance` in API; legacy doc name `OpeningSocietyBalance`) and **opening corpus fund** (`openingCorpusBalance`) at group create
 - Set optional **creator corpus amount** and whether corpus was **already received** (see §4.6.2)
 
 **Group Admin** should be able to:
-- Update group details — contribution settings only; opening maintenance and corpus funds are **not** editable after create
-- **Delete the group** — permanently removes the group and all related data (members, contributions, payments, expenses, ledger, invites)
+- Update group details — contribution settings plus optional **tagline** and **logo URL** (group profile branding); opening maintenance and corpus funds are **not** editable after create
+- **Delete the group** — permanently removes the group and all related data (members, contributions, payments, expenses, incomes, ledger, invites)
 
 ### Group Fields
 
@@ -116,11 +119,13 @@ Rules:
 |---|---|
 | Id | Unique identifier |
 | Name | Group name |
+| Tagline | Optional short subtitle (max 200 chars); shown on Home and Group hub |
+| LogoUrl | Optional public image URL (max 500 chars); mobile shows logo or initials avatar |
 | Type | RWA, Friends, Club, Office, Custom |
 | ContributionModel | FIXED Or Per Square feet initially |
 | ContributionAmount | Monthly amount |
 | ContributionFrequency | MONTHLY/Quaterly, Half Yearly, Yearly |
-| OpeningSocietyBalance | Optional initial **maintenance** fund (₹); set only at group create; default 0 |
+| OpeningMaintenanceBalance | Optional initial **maintenance** fund (₹); API/json: `openingMaintenanceBalance`; set only at group create; default 0 |
 | OpeningCorpusBalance | Optional initial **corpus** fund (₹); pre-collected corpus in bank at onboarding; default 0 |
 | CreatedByUserId | User who created the group (audit) |
 | CreatedAt | Timestamp |
@@ -217,11 +222,11 @@ When an admin creates a member:
 | **New user** (no account password yet) | Create user (synthetic username/email from phone) + membership + one-time **invite** (8-character code, 7-day expiry). Response includes plaintext `inviteCode` **once** for the admin to share. |
 | **Existing user** (already has password, e.g. joining a second group) | Add membership only; `requiresActivation: false`; no invite. |
 
-**Mobile:** After add, if activation is required, show a modal with phone, invite code, expiry, and **Share** (system share sheet).
+**Mobile:** After add, if activation is required, show a modal with phone, invite code, expiry, and **Share** (system share sheet; message prefixed with **group name**).
 
 ### Activate account (member, no login yet)
 
-Member opens app → **Activate account with invite code** → enters:
+Member opens app → **Activate account** screen (not linked from login in current mobile UX) → enters:
 
 - Phone (must match admin record)
 - Invite code (from admin)
@@ -411,6 +416,30 @@ Admins record spending from the **maintenance** or **corpus** fund (see §4.6).
 | FundType | `Maintenance` (default) or `Corpus` — which pool pays for this expense |
 | CreatedAt | System timestamp when recorded |
 
+> **Implementation note:** Persisted as `GroupExpense` entity / `GroupExpenses` table; APIs use `/api/group-expenses` (not `society-expenses`).
+
+## 4.5.3 Group income (maintenance fund — implemented)
+
+Admins record **other maintenance fund inflows** that are not member contribution payments — e.g. clubhouse booking, swimming pool booking, parking fees, event hall rental.
+
+- Credits the **maintenance** fund only (corpus income not in MVP).
+- No approval workflow — recorded immediately.
+- Does **not** create a member ledger entry.
+
+### Group income fields
+
+| Field | Description |
+|---|---|
+| Id | Unique identifier |
+| GroupId | Group reference |
+| CreatedByMemberId | Admin who recorded it |
+| Amount | Income amount (> 0) |
+| Description | Income source / details (e.g. “Club house booking”) |
+| IncomeDate | Date of income (defaults to today; **no future dates**) |
+| CreatedAt | System timestamp when recorded |
+
+> **Implementation note:** `GroupIncome` entity / `GroupIncomes` table; migration `AddGroupIncome`.
+
 ---
 
 # 4.6 Society Funds — Maintenance & Corpus (implemented)
@@ -427,21 +456,23 @@ RWA groups track **two separate cash pools**:
 ### 4.6.1 Maintenance fund balance
 
 ```plaintext
-Maintenance balance = OpeningSocietyBalance (at create)
+Maintenance balance = OpeningMaintenanceBalance (at create)
                     + Total PAYMENT ledger credits (contribution collections)
-                    − Total society expenses where FundType = Maintenance
+                    + Total group income (facility / other maintenance inflows)
+                    − Total group expenses where FundType = Maintenance
 ```
 
 - Contribution **payments** always credit the **maintenance** fund (not corpus).
-- **Mobile UI:** Society funds screen shows **maintenance** and **corpus** balance cards (admin-only entry from Home / Group hub).
-- **API:** `GET /api/groups/{id}/society-balance` returns `{ groupId, maintenance, corpus }` (`GroupFundsResponse`).
+- **Group income** (§4.5.3) credits maintenance only.
+- **Mobile UI:** Group funds screen shows **maintenance** and **corpus** balance cards; combined income + expense transaction list; admin actions **Record income** and **Record expense** (admin-only entry from Home / Group hub).
+- **API:** `GET /api/groups/{id}/group-funds` returns `{ groupId, maintenance, corpus }` (`GroupFundsResponse`).
 
 ### 4.6.2 Corpus fund balance & member onboarding
 
 ```plaintext
 Corpus balance = OpeningCorpusBalance (at create)
                + Total CORPUS_PAYMENT ledger credits (mark received only)
-               − Total society expenses where FundType = Corpus
+               − Total group expenses where FundType = Corpus
 ```
 
 **Member corpus fields:** `CorpusAmount` (expected one-time amount), `CorpusPaidAt` (`null` = **pending** when amount > 0).
@@ -457,18 +488,18 @@ Corpus balance = OpeningCorpusBalance (at create)
 - Mark received is rejected if corpus amount is 0, already paid, or member not in caller’s group.
 - Creator at group create: optional `creatorCorpusAmount` + `creatorCorpusPaid` (same rules as add member).
 
-### 4.6.3 Society expense (fund-specific)
+### 4.6.3 Group expense (fund-specific)
 
-- Admin selects **Maintenance** or **Corpus** when recording a society expense.
+- Admin selects **Maintenance** or **Corpus** when recording a group expense.
 - Validation uses the **selected fund’s** available balance only.
-- Expense list shows fund type; mobile Add society expense includes fund picker.
+- Expense list shows fund type; mobile **Record group expense** includes fund picker.
 
 ### 4.6.4 Group ledger (fund-specific cash flow)
 
 - **Admin Group ledger** shows society **inflow / outflow** with **Maintenance / Corpus tabs** (client filters API lines by `fundType`).
-- **Maintenance inflows:** opening maintenance fund (if > 0), contribution payments.
+- **Maintenance inflows:** opening maintenance fund (if > 0), contribution payments, **group income** (§4.5.3).
 - **Corpus inflows:** opening corpus fund (if > 0), corpus payments (mark received).
-- **Outflows:** society expenses (per fund).
+- **Outflows:** group expenses (per fund).
 - Rows sorted **ascending by date** with **running balance per fund**; Group hub links **Maintenance ledger** and **Corpus ledger** separately.
 - **Member ledgers** are opened from **Members** (book icon) or **My ledger** — not from Group ledger.
 
@@ -514,7 +545,7 @@ CORPUS_PAYMENT
 | ReferenceId | Related entity id (contribution, payment, expense, etc.) |
 | CreatedAt | Timestamp |
 
-Society expenses are **not** stored as member ledger rows; they use the `SocietyExpense` table and affect **maintenance or corpus** fund balance only (see §4.6).
+Group expenses and group income are **not** stored as member ledger rows; they use `GroupExpenses` / `GroupIncomes` tables and affect **maintenance or corpus** fund balance only (see §4.6).
 
 Corpus collections use ledger type **`CORPUS_PAYMENT`** (group-level inflow; not a member balance credit).
 
@@ -542,11 +573,15 @@ When payment received:
 When a **member** expense is approved:
 - Create `EXPENSE` ledger **CREDIT** entry for the submitter.
 
-## 6.4 Society expense recording
+## 6.4 Group expense and income recording
 
-When a **society** expense is created:
-- Persist `SocietyExpense` row with `FundType` (Maintenance or Corpus).
+When a **group** expense is created:
+- Persist `GroupExpense` row with `FundType` (Maintenance or Corpus).
 - Reduce computed balance for that fund only (see §6.6).
+
+When **group income** is created (maintenance only):
+- Persist `GroupIncome` row.
+- Increase maintenance fund computed balance (see §6.6).
 
 When corpus is **marked received**:
 - Set member `CorpusPaidAt`.
@@ -569,9 +604,10 @@ Member balance = Total Credits − Total Debits
 ### Maintenance fund
 
 ```plaintext
-Maintenance = OpeningSocietyBalance
+Maintenance = OpeningMaintenanceBalance
             + Total PAYMENT credits (all members)
-            − Total society expenses (FundType = Maintenance)
+            + Total group income
+            − Total group expenses (FundType = Maintenance)
 ```
 
 ### Corpus fund
@@ -579,11 +615,11 @@ Maintenance = OpeningSocietyBalance
 ```plaintext
 Corpus = OpeningCorpusBalance
        + Total CORPUS_PAYMENT credits
-       − Total society expenses (FundType = Corpus)
+       − Total group expenses (FundType = Corpus)
 ```
 
 - Member expense approvals do **not** change either fund (they adjust member ledger only).
-- Contribution payments credit **maintenance** only; corpus inflows come from opening corpus and mark-received only.
+- Contribution payments credit **maintenance** only; additional maintenance inflows come from **group income**; corpus inflows come from opening corpus and mark-received only.
 
 ---
 
@@ -629,8 +665,9 @@ Can:
 - View **Maintenance ledger** and **Corpus ledger** (fund-specific society cash-flow) and **Society funds**
 - Generate contributions (month range popup), record full/partial cash payments for any member
 - View **pending collections** summary and **contribution report** (tabular + CSV export)
-- Record **society** expenses (maintenance or corpus fund)
-- Update group settings
+- Record **group** expenses (maintenance or corpus fund)
+- Record **group income** (maintenance fund — facility bookings, etc.)
+- Update group settings and **group profile** (tagline, logo URL)
 
 ## MEMBER
 
@@ -647,10 +684,13 @@ Can:
 | `GET /groups/{id}/members` | No | Yes |
 | `GET /groups/{id}/balances` | No | Yes |
 | `GET /groups/{id}/ledger-overview` | No | Yes (legacy; member drill-down uses per-member ledger API) |
-| `GET /groups/{id}/society-ledger` | No | Yes |
-| `GET /groups/{id}/society-balance` | Yes | Yes (returns maintenance + corpus) |
-| `GET /groups/{id}/society-expenses` | Yes | Yes |
-| `POST /society-expenses` | No | Yes (body includes `fundType`) |
+| `GET /groups/{id}/fund-ledger` | No | Yes |
+| `GET /groups/{id}/group-funds` | Yes | Yes (returns maintenance + corpus) |
+| `GET /groups/{id}/group-expenses` | Yes | Yes |
+| `GET /groups/{id}/group-incomes` | Yes | Yes |
+| `POST /group-expenses` | No | Yes (body includes `fundType`) |
+| `POST /group-incomes` | No | Yes (maintenance fund inflow) |
+| `PUT /groups/{id}` | No | Yes (contribution settings + `tagline`, `logoUrl`) |
 | `POST /members/{id}/corpus/receive` | No | Yes |
 | `GET /groups/{id}/contributions` | No | Yes (all members; includes paid/remaining) |
 | `GET /groups/{id}/contributions/pending-summary` | No | Yes |
@@ -667,18 +707,19 @@ Authentication:
 
 # 9. Mobile App Screens
 
-React Native (Expo) app with tab navigation: **Home**, **Payments**, **Expenses**, **Group**.
+React Native (Expo) **Society360** app with tab navigation: **Home**, **Payments**, **Expenses**, **Minutes** (governance hub), **Group**.
 
 ### Implemented screens
 
 | # | Screen | Notes |
 |---|---|---|
-| 1 | Login | Username + password; JWT session; links to Register, Activate account & Forgot password |
+| 1 | Login | **Society360** branding; username + password (empty fields — no demo prefills); links to **Register** and **Forgot password** only (no Activate account link on login screen; activation API still available) |
 | 1a | Register | Username, email, name, password; auto sign-in; lands on Home with **Create group** when no memberships |
-| 1b | Activate account | Phone + invite code + password; auto sign-in on success |
+| 1b | Activate account | Phone + invite code + password; auto sign-in on success (reachable via deep link / future entry; not linked from login) |
 | 1c | Forgot password | Email → send 6-digit code → code + new password; auto sign-in |
-| 2 | Create Group | Group settings; optional opening maintenance/corpus funds; creator opening balance, corpus amount/paid |
-| 3 | Dashboard (Home) | Quick-action tiles with live metrics; empty state for new users without groups |
+| 2 | Create Group | Group settings; optional **tagline**; optional opening maintenance/corpus funds; creator opening balance, corpus amount/paid |
+| 2b | Group profile | Admin; edit tagline and logo URL; live avatar preview (logo or initials) |
+| 3 | Dashboard (Home) | Group avatar + name + tagline on hero card; quick-action tiles with live metrics; empty state for new users without groups |
 | 4 | Members List | Admin only; compact rows; balance; **pending corpus** badge; **Mark received**; edit; member ledger |
 | 5 | Add Member | Opening balance; corpus amount + paid/pending; square feet (per-sq-ft); invite modal when activation required |
 | 6 | Edit Member | Name, phone, role (Member/Admin); **Reset password** (admin fallback reset code modal) |
@@ -687,9 +728,11 @@ React Native (Expo) app with tab navigation: **Home**, **Payments**, **Expenses*
 | 9 | Ledger | **Admin group view:** Maintenance / Corpus tabs (fund-filtered society ledger). **All:** My ledger. **Members →** per-member ledger |
 | 10 | Contributions (Payments tab) | Generate (month/year range popup + confirm); pending collections; partial/full pay; link to report |
 | 10b | Contribution report | Admin; tabular report by period; per-period CSV export |
-| 11 | Society funds | Admin only; **maintenance + corpus** balance cards, expense list, record expense |
-| 12 | Add society expense | Admin only; **Maintenance / Corpus** fund picker; expense date; immediate deduction from selected fund |
-| 13 | Group hub | Admin links incl. **Maintenance ledger**, **Corpus ledger**, Society funds; **Create group** when no membership; **Delete group** |
+| 11 | Group funds | Admin only; **maintenance + corpus** balance cards; combined **income + expense** transaction list; **Record income** and **Record expense** |
+| 12 | Record group expense | Admin only; **Maintenance / Corpus** fund picker; expense date; immediate deduction from selected fund |
+| 12b | Record group income | Admin only; maintenance fund; description (e.g. clubhouse booking), amount, date |
+| 13 | Group hub | Group avatar + tagline header; admin links incl. **Group profile**, **Fund ledger**, Group funds; **Create group** when no membership; **Delete group** |
+| 14 | Governance hub (Minutes tab) | Meeting minutes, group decisions, open matters, committee members — see `RWA_Meeting_Minutes_Action_Tracker_PRD_v2.md` |
 
 ### Dashboard quick actions (implemented)
 
@@ -698,19 +741,21 @@ Tiles use **icon + title on one row**, with a **metric** and subtitle below:
 | Tile | Who | Metric shown |
 |---|---|---|
 | Pay dues | All | Count of pending contributions |
-| Society funds | Admin | Maintenance balance (₹); subtitle shows corpus balance |
+| Group funds | Admin | Maintenance balance (₹); subtitle shows corpus balance |
 | Maintenance ledger | Admin | — (opens maintenance fund cash-flow; Corpus via tab or Group hub) |
 | My ledger | Member | — |
 | Members | Admin | — |
 | Review expenses | Admin | Count pending approval |
 | Group hub | Member | — |
 
-There is **no** duplicate “View society funds” button on Home; fund balances are on the Society funds tile and screen only.
+There is **no** duplicate “View group funds” button on Home; fund balances are on the Group funds tile and screen only.
 
 ### Mobile UX notes (implemented)
 
+- **Society360** global brand on login/register; **per-group** personalization (name, tagline, logo/initials) after sign-in.
+- Admin **share sheets** (invite, password reset) prefix messages with **group name**, not app brand.
 - Dark enterprise-style theme across components.
-- Compact list rows: members (2-line), society expenses, member ledger entries.
+- Compact list rows: members (2-line), group expenses/income, member ledger entries.
 - Group ledger: horizontal-scroll Excel-style columns (Date, Particulars, In, Out, Balance); **Maintenance / Corpus** segment tabs on admin group view.
 - Group creation: any registered user; creator becomes Admin; optional dual opening funds and creator corpus.
 - Empty home (no memberships): Dashboard and Group hub show **Create group** CTA; register flow tolerates empty `memberships` array without crash.
@@ -739,12 +784,13 @@ POST /api/auth/reset-password       # anonymous; body: email, resetCode, newPass
 ## Group APIs
 
 ```http
-POST /api/groups          # any authenticated user; body: group fields + optional openingSocietyBalance,
+POST /api/groups          # any authenticated user; body: group fields + optional openingMaintenanceBalance,
                           #   openingCorpusBalance, creatorOpeningBalance, creatorSquareFeet,
-                          #   creatorCorpusAmount, creatorCorpusPaid; creator added as Admin
+                          #   creatorCorpusAmount, creatorCorpusPaid, tagline, logoUrl; creator added as Admin
 GET /api/groups           # JWT; list groups where user has membership
-GET /api/groups/{id}      # group member/admin (X-Member-Id)
-PUT /api/groups/{id}      # group admin; does not change openingSocietyBalance or openingCorpusBalance
+GET /api/groups/{id}      # group member/admin (X-Member-Id); includes tagline, logoUrl
+PUT /api/groups/{id}      # group admin; contribution settings + tagline + logoUrl;
+                          #   does not change openingMaintenanceBalance or openingCorpusBalance
 DELETE /api/groups/{id}   # group admin (X-Member-Id); permanent delete
 ```
 
@@ -795,13 +841,16 @@ GET /api/groups/{groupId}/expenses
 
 ---
 
-## Society funds APIs
+## Group funds APIs
 
 ```http
-GET /api/groups/{groupId}/society-balance    # { groupId, maintenance, corpus } — FundBalanceDto each
-GET /api/groups/{groupId}/society-expenses
-POST /api/society-expenses           # admin only; body: { groupId, amount, description, expenseDate, fundType? }
+GET /api/groups/{groupId}/group-funds      # { groupId, maintenance, corpus } — FundBalanceDto each
+GET /api/groups/{groupId}/group-expenses
+GET /api/groups/{groupId}/group-incomes
+POST /api/group-expenses             # admin only; body: { groupId, amount, description, expenseDate, fundType? }
                                      # fundType: Maintenance (default) | Corpus
+POST /api/group-incomes              # admin only; body: { groupId, amount, description, incomeDate }
+                                     # credits maintenance fund only
 ```
 
 ---
@@ -811,21 +860,22 @@ POST /api/society-expenses           # admin only; body: { groupId, amount, desc
 ```http
 GET /api/ledger/{memberId}
 GET /api/groups/{groupId}/balances        # admin only
-GET /api/groups/{groupId}/ledger-overview # admin only; legacy aggregate (UI uses society-ledger for group view)
-GET /api/groups/{groupId}/society-ledger  # admin only; lines include fundType; running balance per fund
+GET /api/groups/{groupId}/ledger-overview # admin only; legacy aggregate (UI uses fund-ledger for group view)
+GET /api/groups/{groupId}/fund-ledger     # admin only; lines include fundType; running balance per fund
 ```
 
 ---
 
-# 11. SQLite Requirements
+# 11. Database Requirements
 
-Use SQLite as local database.
+Use **PostgreSQL** as the primary database (production and local dev).
 
 Requirements:
-- Entity Framework Core migrations
-- Proper indexes
-- Foreign key constraints
+- Entity Framework Core migrations (Npgsql)
+- Connection string via `ConnectionStrings:DefaultConnection` (Neon/Supabase or Docker Postgres)
+- Proper indexes and foreign key constraints
 - Transactions for financial operations
+- Startup migration bootstrap (`DatabaseBootstrap`) with health/migration middleware
 
 ---
 
@@ -852,8 +902,11 @@ Examples:
 - Duplicate contribution generation for the same member + period key must be prevented
 - **Overlapping** contribution month ranges for a group must be prevented (any shared calendar month)
 - Payment amount cannot exceed remaining balance on a linked contribution
-- **Expense date** cannot be in the future (member and society expenses)
-- Society expense amount cannot exceed available balance in the **selected fund** (Maintenance or Corpus)
+- **Expense date** cannot be in the future (member and group expenses)
+- **Income date** cannot be in the future (group income)
+- Group expense amount cannot exceed available balance in the **selected fund** (Maintenance or Corpus)
+- Group income amount must be > 0; description required (max 500 chars)
+- Group tagline max 200 chars; logo URL max 500 chars (optional, nullable)
 - Corpus **mark received** only when `CorpusAmount` > 0 and `CorpusPaidAt` is null; idempotent reject if already paid
 - Pre-paid corpus at member add/create must **not** post a duplicate corpus ledger entry (opening corpus covers bulk onboarding)
 - Group delete restricted to **group Admin** (not members)
@@ -871,8 +924,10 @@ Automated tests in `tests/Application.Tests/` (xUnit) cover:
 - Member create/update (roles: Member / Admin only)
 - Group create/delete (registered user creates; group admin deletes)
 - Self-service email password reset + admin fallback reset code
-- Dual fund balances (maintenance + corpus), corpus mark received, fund-specific society expenses
-- Society ledger (inflow/outflow per fund, ordering and running balance)
+- Dual fund balances (maintenance + corpus), corpus mark received, fund-specific group expenses
+- Group income (maintenance inflow) and balance/ledger integration
+- Group branding fields (tagline, logo URL) on create/update
+- Fund ledger (inflow/outflow per fund, ordering and running balance)
 - Corpus fund flows (`CorpusFundTests`: onboarding paid/pending, mark received, expense against corpus)
 - Expense date validation (no future dates)
 - Member invite on create + account activation (invite-only and optional OTP paths)
@@ -889,6 +944,8 @@ Automated tests in `tests/Application.Tests/` (xUnit) cover:
 
 DO NOT implement yet:
 - **Sinking fund** (third pool; deferred after corpus phase 1)
+- **Corpus fund income** (group income is maintenance-only in current MVP)
+- **Group logo file upload** (URL paste only; no image picker/storage)
 - Expense splitting among members
 - **Expense proof / receipt upload** (attachments)
 - Online payment gateways
@@ -939,7 +996,7 @@ Avoid duplicate financial entries.
 
 Generate:
 - Full backend code
-- SQLite database setup
+- PostgreSQL database setup
 - Entity Framework migrations
 - Swagger documentation
 - React Native mobile app
@@ -953,7 +1010,7 @@ Generate:
 To keep implementation practical and stable across environments:
 
 1. **.NET Version**  
-   - Target framework: **.NET 8** (EF Core 8, SQLite).  
+   - Target framework: **.NET 8** (EF Core 8, PostgreSQL/Npgsql).  
    - Upgrade path to .NET 9 documented in stack section; not required for MVP.
 
 2. **Authentication**  
@@ -983,7 +1040,8 @@ To keep implementation practical and stable across environments:
 
 8. **Two expense channels**  
    - **Member expense:** reimbursement ledger credit after approval.  
-   - **Society expense:** reduces **maintenance or corpus** fund (selected `FundType`); admin-only create.
+   - **Group expense:** reduces **maintenance or corpus** fund (selected `FundType`); admin-only create.  
+   - **Group income:** increases **maintenance** fund only; admin-only create.
 
 9. **Society funds & Group ledger (UI)**  
    - **Society funds**, **Maintenance ledger**, and **Corpus ledger** on Home / Group hub: **admin-only** in the mobile app.  
@@ -991,7 +1049,7 @@ To keep implementation practical and stable across environments:
    - Group ledger = fund-specific cash-flow table with Maintenance / Corpus tabs; member ledgers from **Members** screen.
 
 10. **Expense date**  
-    - Required on create for member and society expenses (`expenseDate` in API).  
+    - Required on create for member and group expenses (`expenseDate` in API) and group income (`incomeDate`).  
     - Defaults to today in mobile (`YYYY-MM-DD`); server rejects future dates.
 
 11. **CORS (development)**  
@@ -1017,11 +1075,31 @@ To keep implementation practical and stable across environments:
     - Production has no demo seed.
 
 16. **Deployment / operations**  
-    - Production SQLite path (e.g. Linux App Service: `/home/data/mysociety.db`).  
+    - Production **PostgreSQL** (e.g. Neon/Supabase connection string in App Service settings / Docker env).  
     - Health: `/api/health`, `/health`.  
     - Serilog file logging under `LogFiles/Application`.  
     - Mobile API URL via `EXPO_PUBLIC_API_URL` at build time (EAS / `.env`).  
-    - Azure pipeline targets **Linux** App Service (`webAppLinux`, `linux-x64`); connection string and JWT key required in app settings.
+    - Azure pipeline targets **Linux** App Service / container deploy; `ConnectionStrings__DefaultConnection` and JWT key required.
+
+22. **Mobile product branding (Society360)**  
+    - App display name **Society360**; login shows platform brand only (pre-group).  
+    - Login: no prefilled demo credentials, no “Contribution SaaS” badge, no demo hint footer.  
+    - Per-group identity after sign-in via tagline + logo URL (§4.1).
+
+23. **Group profile personalization**  
+    - Optional `tagline` and `logoUrl` on group create; admin edits via **Group hub → Group profile** (`PUT /api/groups/{id}`).  
+    - Mobile `GroupAvatar`: logo image from URL, or initials fallback from group name.  
+    - Shown on Home hero card and Group hub header.
+
+24. **Maintenance fund income**  
+    - `GroupIncome` records (clubhouse/pool bookings, etc.) increase maintenance balance and appear as inflows on fund ledger.  
+    - Admin: **Group funds → Record income**; combined transaction list with expenses.
+
+25. **API path naming (canonical)**  
+    - Prefer `group-funds`, `group-expenses`, `group-incomes`, `fund-ledger` (legacy doc names `society-balance` / `society-expenses` retired in code).
+
+26. **Governance module**  
+    - **Minutes** tab: meetings, agenda, resolutions, open matters, committee — implemented per `RWA_Meeting_Minutes_Action_Tracker_PRD_v2.md`.
 
 17. **Opening balance vs contribution billing**  
     - Opening balance (+/−) posts an `OPENING_BALANCE` ledger entry only.  
@@ -1052,14 +1130,15 @@ To keep implementation practical and stable across environments:
 | Area | Status |
 |---|---|
 | Clean Architecture (Api / Application / Domain / Infrastructure) | Done |
-| SQLite + EF migrations (incl. `AddCorpusFund`, `Payments`, `SocietyExpenses`) | Done |
+| PostgreSQL + EF migrations (incl. `AddCorpusFund`, `AddGroupBranding`, `AddGroupIncome`, `GroupExpenses`) | Done |
 | Ledger engine + member balances | Done |
 | Contributions (month range, overlap validation, full billing, credit-aware paid status) + partial payments | Done |
 | Contribution report + per-period CSV export (mobile) | Done |
 | SaaS auth (register, username login, email password reset) | Done |
 | Group create (any user) / list (memberships) / delete (group admin) | Done |
+| Group profile branding (`tagline`, `logoUrl`) | Done |
 | Member expenses (approve/reject) | Done |
-| Dual fund balances (maintenance + corpus) + fund-specific society expenses + per-fund society ledger | Done |
+| Dual fund balances (maintenance + corpus) + fund-specific group expenses + group income + per-fund ledger | Done |
 | Corpus mark received + onboarding rules (no duplicate corpus inflow) | Done |
 | Auth (JWT) + role-based authorization | Done |
 | Member invite + account activation | Done |
@@ -1067,9 +1146,10 @@ To keep implementation practical and stable across environments:
 | Optional activation OTP (`Otp:Required`) | Done (disabled by default) |
 | Email sender (`LoggingEmailSender` / optional SMTP) | Done |
 | Swagger (dev) + global exception handler | Done |
-| Mobile Expo app (tabs + stack screens) | Done |
-| Application unit tests (62) | Done |
-| Azure App Service Linux deploy + file logging | Done |
+| Mobile **Society360** Expo app (tabs + stack screens) | Done |
+| Governance (Minutes tab — meetings, decisions, open matters) | Done (see `RWA_Meeting_Minutes_Action_Tracker_PRD_v2.md`) |
+| Application unit tests (~96) | Done |
+| Azure App Service Linux / Docker deploy + file logging | Done |
 
 ### Seed / demo logins (development only)
 
@@ -1080,7 +1160,7 @@ Seeded in **Development** environment (`DatabaseSeeder`):
 | `demo` (username) or `demo@example.com` | Password123! | Registered user; Admin of seeded “Sunrise RWA” group (`OpeningCorpusBalance` ₹5,00,000) |
 | `9000000002` / `9000000003` (phone) | Password123! | Activated invite members; **Priya (`9000000003`)** has **pending corpus** (₹1,00,000) for Mark received testing |
 
-Production has **no** demo seed. Users **register** via the app, then create groups. Admin-added members use **invite activation** (§4.2.1).
+Production has **no** demo seed. Users **register** via the app, then create groups. Admin-added members use **invite activation** (§4.2.1). Dev seed credentials exist for API testing; the **mobile login screen does not prefill** them.
 
 API default dev URL: `http://localhost:5221` (use host IP or `EXPO_PUBLIC_API_URL` when testing on device/APK).
 
@@ -1113,4 +1193,5 @@ API default dev URL: `http://localhost:5221` (use host IP or `EXPO_PUBLIC_API_UR
 | 2026-06-03 | **Corpus fund (phase 1):** split maintenance/corpus pools; `OpeningCorpusBalance`, member corpus paid/pending, mark received API, `CORPUS_PAYMENT` ledger type, `FundType` on society expenses, dual balance API, Maintenance/Corpus ledger tabs; mobile corpus UI; register empty-memberships fix; 62 tests. Sinking fund deferred. |
 | 2026-06-03 | **SaaS revamp:** removed platform operator / bootstrap / Platform console; self-service registration (username, email, password); any user creates groups as Admin; email forgot-password flow (`send-code` + 6-digit reset); admin fallback reset for invite users; mobile Register / updated Login / Forgot password screens; `Group.CreatedByUserId`; demo seed `demo` / `demo@example.com`. |
 | 2026-05-28 | Payments overhaul: generate popup (month/year dropdowns), overlap validation, partial payments, pending collections, contribution report + CSV; SuperAdmin delete group; full contribution billing vs opening credit; group contribution APIs; Android safe-area; Azure Linux deploy. |
+| 2026-06-08 | **Society360** mobile branding; login UX cleanup (no demo prefills/hints; Activate account removed from login links); per-group **tagline** + **logo URL** (`AddGroupBranding`); **group income** for maintenance fund (`AddGroupIncome`); API paths documented as `group-funds` / `group-expenses` / `group-incomes` / `fund-ledger`; database section updated to **PostgreSQL**; Minutes/governance tab cross-reference. |
 

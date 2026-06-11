@@ -15,19 +15,25 @@ public static class DependencyInjection
 {
     public static IServiceCollection AddInfrastructure(this IServiceCollection services, IConfiguration configuration)
     {
-        var connectionString = configuration.GetConnectionString("DefaultConnection");
-        if (string.IsNullOrWhiteSpace(connectionString))
+        var rawConnectionString = configuration.GetConnectionString("DefaultConnection");
+        if (string.IsNullOrWhiteSpace(rawConnectionString))
         {
             throw new InvalidOperationException(
                 "ConnectionStrings:DefaultConnection is required. " +
                 "Set ConnectionStrings__DefaultConnection (Neon/Supabase PostgreSQL connection string).");
         }
 
+        var connectionString = PostgresConnectionConfiguration.Normalize(rawConnectionString);
+
         services.AddDbContext<AppDbContext>(options =>
             options.UseNpgsql(connectionString, npgsql =>
             {
                 npgsql.MigrationsAssembly(typeof(AppDbContext).Assembly.GetName().Name);
-                npgsql.EnableRetryOnFailure(maxRetryCount: 3);
+                npgsql.EnableRetryOnFailure(
+                    maxRetryCount: 5,
+                    maxRetryDelay: TimeSpan.FromSeconds(10),
+                    errorCodesToAdd: null);
+                npgsql.CommandTimeout(180);
             }));
 
         services.Configure<JwtSettings>(configuration.GetSection(JwtSettings.SectionName));
@@ -55,6 +61,7 @@ public static class DependencyInjection
         services.AddScoped<IPaymentRepository, PaymentRepository>();
         services.AddScoped<IExpenseRepository, ExpenseRepository>();
         services.AddScoped<IGroupExpenseRepository, GroupExpenseRepository>();
+        services.AddScoped<IGroupIncomeRepository, GroupIncomeRepository>();
         services.AddScoped<ICommitteeMemberRepository, CommitteeMemberRepository>();
         services.AddScoped<IMeetingRepository, MeetingRepository>();
         services.AddScoped<IOpenMatterRepository, OpenMatterRepository>();
@@ -63,6 +70,9 @@ public static class DependencyInjection
         services.AddScoped<IMinuteRepository, MinuteRepository>();
         services.AddScoped<IResolutionRepository, ResolutionRepository>();
         services.AddScoped<IGroupDecisionRepository, GroupDecisionRepository>();
+        services.AddScoped<INotificationRepository, NotificationRepository>();
+        services.AddScoped<IAssetRepository, AssetRepository>();
+        services.AddScoped<IMaintenanceRecordRepository, MaintenanceRecordRepository>();
         services.AddScoped<IUnitOfWork, UnitOfWork>();
         services.AddScoped<ILedgerService, LedgerService>();
         services.AddScoped<IPasswordHasher, PasswordHasher>();

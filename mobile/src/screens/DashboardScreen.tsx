@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import { api } from '../api/client';
 import { Button } from '../components/Button';
+import { GroupAvatar } from '../components/GroupAvatar';
 import { QuickActionTile } from '../components/QuickActionTile';
 import { Screen } from '../components/Screen';
 import { SectionHeader } from '../components/SectionHeader';
@@ -78,6 +79,17 @@ export function DashboardScreen({ navigation }: Props) {
     { errorMessage: 'Failed to load expenses' },
   );
 
+  const { data: unreadNotifications } = useAsyncData(
+    useCallback(() => {
+      if (!token) {
+        return Promise.resolve({ count: 0 });
+      }
+      return api.getUnreadNotificationCount(token);
+    }, [token]),
+    [token],
+    { errorMessage: 'Failed to load notifications', loadOnFocus: true },
+  );
+
   const { data: groupFunds } = useAsyncData(
     useCallback(() => {
       if (!hasActiveGroup || !isAdmin || !token || !activeMemberId || !activeGroupId) {
@@ -87,6 +99,17 @@ export function DashboardScreen({ navigation }: Props) {
     }, [hasActiveGroup, isAdmin, activeGroupId, token, activeMemberId]),
     [hasActiveGroup, isAdmin, activeGroupId, token, activeMemberId],
     { errorMessage: 'Failed to load group funds balance' },
+  );
+
+  const { data: assetMaintenanceSummary } = useAsyncData(
+    useCallback(() => {
+      if (!hasActiveGroup || !isAdmin || !token || !activeMemberId || !activeGroupId) {
+        return Promise.resolve(null);
+      }
+      return api.getAssetMaintenanceSummary(activeGroupId, token, activeMemberId);
+    }, [hasActiveGroup, isAdmin, activeGroupId, token, activeMemberId]),
+    [hasActiveGroup, isAdmin, activeGroupId, token, activeMemberId],
+    { errorMessage: 'Failed to load asset maintenance summary' },
   );
 
   const handleSignOut = async () => {
@@ -101,6 +124,7 @@ export function DashboardScreen({ navigation }: Props) {
     contributions?.filter((c) => c.status === 'Pending').length ?? 0;
   const pendingExpenseCount =
     expenses?.filter((e) => e.status === 'Pending').length ?? 0;
+  const unreadNotificationCount = unreadNotifications?.count ?? 0;
 
   if (!hasActiveGroup) {
     return (
@@ -148,9 +172,9 @@ export function DashboardScreen({ navigation }: Props) {
             </View>
           </View>
           <View style={styles.headerActions}>
-            <Pressable style={styles.bell} onPress={() => navigation.navigate('Payments')}>
+            <Pressable style={styles.bell} onPress={() => navigation.navigate('Notifications')}>
               <Ionicons name="notifications-outline" size={18} color={colors.textMuted} />
-              {pendingCount > 0 ? <View style={styles.bellDot} /> : null}
+              {unreadNotificationCount > 0 ? <View style={styles.bellDot} /> : null}
             </Pressable>
             <Pressable
               style={styles.bell}
@@ -162,16 +186,28 @@ export function DashboardScreen({ navigation }: Props) {
         </View>
 
         <SurfaceCard variant="gradient" style={styles.groupCard}>
-          <View style={styles.groupTop}>
-            <Text style={styles.groupName}>{activeMembership?.groupName}</Text>
-            {activeMembership ? <StatusBadge label={activeMembership.role} /> : null}
+          <View style={styles.groupHeader}>
+            <GroupAvatar
+              name={activeMembership?.groupName ?? 'Group'}
+              logoUrl={group?.logoUrl}
+              size={52}
+            />
+            <View style={styles.groupHeaderText}>
+              <View style={styles.groupTop}>
+                <Text style={styles.groupName}>{activeMembership?.groupName}</Text>
+                {activeMembership ? <StatusBadge label={activeMembership.role} /> : null}
+              </View>
+              {group?.tagline ? (
+                <Text style={styles.groupTagline}>{group.tagline}</Text>
+              ) : null}
+              {group ? (
+                <Text style={styles.groupMeta}>
+                  {formatEnumLabel(group.contributionFrequency)} ·{' '}
+                  {formatCurrency(group.contributionAmount)} / period
+                </Text>
+              ) : null}
+            </View>
           </View>
-          {group ? (
-            <Text style={styles.groupMeta}>
-              {formatEnumLabel(group.contributionFrequency)} ·{' '}
-              {formatCurrency(group.contributionAmount)} / period
-            </Text>
-          ) : null}
         </SurfaceCard>
 
         {(memberships ?? []).length > 1 ? (
@@ -259,6 +295,28 @@ export function DashboardScreen({ navigation }: Props) {
                 tone="amber"
                 onPress={() => navigation.navigate('Expenses')}
               />
+              <QuickActionTile
+                title="Asset maintenance"
+                metric={String(
+                  (assetMaintenanceSummary?.dueSoonCount ?? 0) +
+                    (assetMaintenanceSummary?.overdueCount ?? 0),
+                )}
+                metricTone={
+                  (assetMaintenanceSummary?.overdueCount ?? 0) > 0
+                    ? 'danger'
+                    : (assetMaintenanceSummary?.dueSoonCount ?? 0) > 0
+                      ? 'warning'
+                      : 'success'
+                }
+                subtitle={
+                  assetMaintenanceSummary
+                    ? `${assetMaintenanceSummary.overdueCount} overdue · ${assetMaintenanceSummary.dueSoonCount} due soon`
+                    : 'Preventive maintenance'
+                }
+                icon="construct-outline"
+                tone="amber"
+                onPress={() => navigation.navigate('AssetRegister')}
+              />
             </>
           ) : (
             <QuickActionTile
@@ -276,10 +334,13 @@ export function DashboardScreen({ navigation }: Props) {
             <Ionicons name="megaphone-outline" size={16} color={colors.primary} />
             <Text style={styles.announcementTitle}>Group announcement</Text>
           </View>
-          <Text style={styles.announcementHeadline}>Stay on top of contributions</Text>
+          <Text style={styles.announcementHeadline}>
+            {group?.tagline ?? 'Stay on top of contributions'}
+          </Text>
           <Text style={styles.announcementBody}>
-            Use the Payments tab to settle pending cycles. Admins can generate new contribution
-            periods for the whole group.
+            {group?.tagline
+              ? `Welcome to ${activeMembership?.groupName ?? 'your group'}. Use the Payments tab to settle pending cycles.`
+              : 'Use the Payments tab to settle pending cycles. Admins can generate new contribution periods for the whole group.'}
           </Text>
         </SurfaceCard>
 
@@ -323,13 +384,16 @@ const styles = StyleSheet.create({
     backgroundColor: colors.danger,
   },
   groupCard: { marginBottom: spacing.md },
+  groupHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.md },
+  groupHeaderText: { flex: 1 },
   groupTop: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 6,
+    marginBottom: 4,
   },
   groupName: { fontSize: 14, fontWeight: '800', color: colors.text, flex: 1 },
+  groupTagline: { fontSize: 12, color: colors.textMuted, lineHeight: 17, marginBottom: 4 },
   groupMeta: { fontSize: 12, color: colors.textMuted },
   section: { marginBottom: spacing.md },
   chip: {

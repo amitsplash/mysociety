@@ -2,6 +2,7 @@ using FluentValidation;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using MySociety.Application.Auth.Dtos;
+using MySociety.Application.Common;
 using MySociety.Application.Common.Exceptions;
 using MySociety.Application.Common.Interfaces;
 using MySociety.Application.Common.Settings;
@@ -99,12 +100,22 @@ public class AuthService : IAuthService
             throw new ValidationException(validation.Errors.Select(x => x.ErrorMessage));
         }
 
-        var username = request.Username.Trim().ToLowerInvariant();
+        var phone = request.Phone.Trim();
         var email = request.Email.Trim().ToLowerInvariant();
 
-        if (await _userRepository.ExistsByUsernameAsync(username, cancellationToken))
+        if (await _userRepository.ExistsByPhoneAsync(phone, cancellationToken))
         {
-            throw new ConflictException("This username is already taken.");
+            var existing = await _userRepository.GetByPhoneAsync(phone, cancellationToken);
+            if (existing is not null
+                && string.IsNullOrWhiteSpace(existing.PasswordHash)
+                && (await _memberInviteRepository.GetUnusedByUserPhoneAsync(phone, cancellationToken)).Count > 0)
+            {
+                throw new ConflictException(
+                    "This phone was added by a group admin. Use your invite code to activate your account.",
+                    "PENDING_ACTIVATION");
+            }
+
+            throw new ConflictException("This phone number is already registered. Sign in instead.");
         }
 
         if (await _userRepository.ExistsByEmailAsync(email, cancellationToken))
@@ -115,9 +126,10 @@ public class AuthService : IAuthService
         var user = new User
         {
             Id = Guid.NewGuid(),
-            Username = username,
+            Username = $"user_{phone}",
             Email = email,
             Name = request.Name.Trim(),
+            Phone = phone,
             PasswordHash = _passwordHasher.Hash(request.Password),
             CreatedAt = DateTime.UtcNow
         };
@@ -138,16 +150,16 @@ public class AuthService : IAuthService
             throw new ValidationException(validation.Errors.Select(x => x.ErrorMessage));
         }
 
-        var key = request.Username.Trim();
-        var user = await _userRepository.GetByUsernameOrPhoneWithMembershipsAsync(key, cancellationToken);
+        var phone = request.Phone.Trim();
+        var user = await _userRepository.GetByPhoneWithMembershipsAsync(phone, cancellationToken);
         if (user is null || string.IsNullOrWhiteSpace(user.PasswordHash))
         {
-            throw new UnauthorizedException("Invalid username or password.");
+            throw new UnauthorizedException("Invalid phone or password.");
         }
 
         if (!_passwordHasher.Verify(request.Password, user.PasswordHash))
         {
-            throw new UnauthorizedException("Invalid username or password.");
+            throw new UnauthorizedException("Invalid phone or password.");
         }
 
         return BuildLoginResponse(user);
@@ -256,6 +268,33 @@ public class AuthService : IAuthService
         }
 
         user.PasswordHash = _passwordHasher.Hash(request.Password);
+
+        if (!string.IsNullOrWhiteSpace(request.Name))
+        {
+            user.Name = request.Name.Trim();
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.Email))
+        {
+            var newEmail = request.Email.Trim().ToLowerInvariant();
+            if (!InviteUserCredentials.IsPlaceholderEmail(user.Email)
+                && !string.Equals(user.Email, newEmail, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new ValidationException("Email cannot be changed during activation.");
+            }
+
+            if (InviteUserCredentials.IsPlaceholderEmail(user.Email)
+                && !string.Equals(user.Email, newEmail, StringComparison.OrdinalIgnoreCase))
+            {
+                if (await _userRepository.ExistsByEmailAsync(newEmail, cancellationToken))
+                {
+                    throw new ConflictException("This email is already registered.");
+                }
+
+                user.Email = newEmail;
+            }
+        }
+
         matchedInvite.UsedAt = DateTime.UtcNow;
         if (otpRecord is not null)
         {

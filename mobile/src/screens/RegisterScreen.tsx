@@ -16,7 +16,7 @@ type Props = NativeStackScreenProps<AuthStackParamList, 'Register'>;
 export function RegisterScreen({ navigation }: Props) {
   const { register } = useAuth();
   const { showError } = useToast();
-  const [username, setUsername] = useState('');
+  const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
   const [name, setName] = useState('');
   const [password, setPassword] = useState('');
@@ -24,7 +24,8 @@ export function RegisterScreen({ navigation }: Props) {
   const [loading, setLoading] = useState(false);
 
   const onRegister = async () => {
-    if (!username.trim() || !email.trim() || !name.trim() || !password) {
+    const trimmedPhone = phone.trim();
+    if (!trimmedPhone || !email.trim() || !name.trim() || !password) {
       showError('All fields are required');
       return;
     }
@@ -39,8 +40,12 @@ export function RegisterScreen({ navigation }: Props) {
 
     setLoading(true);
     try {
-      await register(username.trim().toLowerCase(), email.trim().toLowerCase(), name.trim(), password);
+      await register(trimmedPhone, email.trim().toLowerCase(), name.trim(), password);
     } catch (e) {
+      if (e instanceof ApiClientError && e.code === 'PENDING_ACTIVATION') {
+        navigation.navigate('ActivateAccount', { phone: trimmedPhone });
+        return;
+      }
       showError(e instanceof ApiClientError ? e.message : 'Registration failed');
     } finally {
       setLoading(false);
@@ -58,12 +63,13 @@ export function RegisterScreen({ navigation }: Props) {
       </View>
       <View style={styles.formCard}>
         <Input
-          label="Username"
-          value={username}
-          onChangeText={setUsername}
+          label="Phone"
+          value={phone}
+          onChangeText={setPhone}
+          keyboardType="phone-pad"
           autoCapitalize="none"
           autoCorrect={false}
-          placeholder="e.g. amit_jain"
+          placeholder="10-digit mobile number"
         />
         <Input
           label="Email"
@@ -82,6 +88,9 @@ export function RegisterScreen({ navigation }: Props) {
           secureTextEntry
         />
         <Button label="Create account" onPress={onRegister} loading={loading} />
+        <Pressable onPress={() => navigation.navigate('ActivateAccount')} style={styles.link}>
+          <Text style={styles.linkText}>Invited by your admin? Activate account</Text>
+        </Pressable>
         <Pressable onPress={() => navigation.navigate('Login')} style={styles.link}>
           <Text style={styles.linkText}>Already have an account? Sign in</Text>
         </Pressable>

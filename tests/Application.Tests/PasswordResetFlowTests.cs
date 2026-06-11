@@ -25,9 +25,10 @@ public class PasswordResetFlowTests
 
         await TestData.AddRegisteredUserAsync(
             context,
-            "reset_user",
+            "user_9000000100",
             "reset_user@example.com",
             "Reset User",
+            phone: "9000000100",
             passwordHash: new PasswordHasher().Hash("InitialPass1!"));
 
         var sent = await authService.SendPasswordResetCodeAsync(
@@ -44,7 +45,7 @@ public class PasswordResetFlowTests
         Assert.False(string.IsNullOrWhiteSpace(login.Token));
 
         var canLogin = await authService.LoginAsync(
-            new LoginRequest("reset_user", "NewSecure99!"),
+            new LoginRequest("9000000100", "NewSecure99!"),
             CancellationToken.None);
         Assert.False(string.IsNullOrWhiteSpace(canLogin.Token));
     }

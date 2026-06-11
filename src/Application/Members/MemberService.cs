@@ -180,8 +180,8 @@ public class MemberService : IMemberService
                 user = new User
                 {
                     Id = Guid.NewGuid(),
-                    Username = InviteUserCredentials.UsernameForPhone(trimmedPhone),
-                    Email = InviteUserCredentials.EmailForPhone(trimmedPhone),
+                    Username = Common.InviteUserCredentials.UsernameForPhone(trimmedPhone),
+                    Email = Common.InviteUserCredentials.EmailForPhone(trimmedPhone),
                     Name = name.Trim(),
                     Phone = trimmedPhone,
                     PasswordHash = string.Empty,
@@ -430,11 +430,4 @@ public class MemberService : IMemberService
             throw new ValidationException(result.Errors.Select(x => x.ErrorMessage));
         }
     }
-}
-
-internal static class InviteUserCredentials
-{
-    public static string UsernameForPhone(string phone) => $"user_{phone}";
-
-    public static string EmailForPhone(string phone) => $"{phone}@invite.local";
 }

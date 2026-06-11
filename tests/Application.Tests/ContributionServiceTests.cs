@@ -11,6 +11,7 @@ using MySociety.Application.Members;
 using MySociety.Application.Members.Dtos;
 using MySociety.Application.Members.Validators;
 using MySociety.Domain.Enums;
+using MySociety.Domain.Enums;
 using MySociety.Infrastructure.Persistence;
 using MySociety.Infrastructure.Repositories;
 using MySociety.Infrastructure.Security;
@@ -292,7 +293,8 @@ public class ContributionServiceTests
             adminId,
             CancellationToken.None);
 
-        Assert.NotEqual(Guid.Empty, payment.Id);
+        Assert.NotEmpty(payment.Allocations);
+        Assert.NotEqual(Guid.Empty, payment.Allocations[0].PaymentId);
         var updated = await context.Contributions.FindAsync(contribution.Id);
         Assert.Equal(ContributionStatus.Paid, updated!.Status);
         Assert.Contains(context.LedgerEntries, x => x.Type == LedgerEntryType.Payment);
@@ -372,6 +374,202 @@ public class ContributionServiceTests
     }
 
     [Fact]
+    public async Task RecordPayment_without_contribution_allocates_oldest_periods_first()
+    {
+        await using var context = await TestDbContextFactory.CreateAsync();
+        var (groupId, adminId, memberId) = await SeedGroupWithMemberAsync(context);
+        var sut = CreateContributionService(context);
+
+        await sut.GenerateAsync(
+            new GenerateContributionsRequest(groupId, "2026-01", "2026-01"),
+            adminId,
+            CancellationToken.None);
+        await sut.GenerateAsync(
+            new GenerateContributionsRequest(groupId, "2026-02", "2026-02"),
+            adminId,
+            CancellationToken.None);
+        await sut.GenerateAsync(
+            new GenerateContributionsRequest(groupId, "2026-03", "2026-03"),
+            adminId,
+            CancellationToken.None);
+
+        var result = await sut.RecordPaymentAsync(
+            new RecordPaymentRequest(memberId, 1500m, null),
+            adminId,
+            CancellationToken.None);
+
+        Assert.Equal(1500m, result.TotalAmount);
+        Assert.Equal(2, result.Allocations.Count);
+        Assert.Equal("2026-01..2026-01", result.Allocations[0].Period);
+        Assert.Equal(1000m, result.Allocations[0].AmountApplied);
+        Assert.Equal(0m, result.Allocations[0].RemainingAfter);
+        Assert.Equal("2026-02..2026-02", result.Allocations[1].Period);
+        Assert.Equal(500m, result.Allocations[1].AmountApplied);
+        Assert.Equal(500m, result.Allocations[1].RemainingAfter);
+
+        var summary = await sut.GetPendingSummaryAsync(groupId, adminId, CancellationToken.None);
+        var memberRow = summary.Members.Single(m => m.MemberId == memberId);
+        Assert.Equal(2, memberRow.Items.Count);
+        Assert.Equal("2026-02..2026-02", memberRow.Items[0].Period);
+        Assert.Equal("2026-03..2026-03", memberRow.Items[1].Period);
+        Assert.Contains("500.00 received", memberRow.Items[0].InternalRemark ?? string.Empty);
+
+        var janContribution = context.Contributions.Single(c =>
+            c.MemberId == memberId && c.Period == "2026-01..2026-01");
+        Assert.Contains("1000.00 received", janContribution.InternalRemark ?? string.Empty);
+    }
+
+    [Fact]
+    public async Task RecordPayment_appends_internal_remark_on_single_contribution()
+    {
+        await using var context = await TestDbContextFactory.CreateAsync();
+        var (groupId, adminId, memberId) = await SeedGroupWithMemberAsync(context);
+        var sut = CreateContributionService(context);
+
+        var generated = await sut.GenerateAsync(
+            new GenerateContributionsRequest(groupId, "2026-12", "2026-12"),
+            adminId,
+            CancellationToken.None);
+
+        var contribution = generated.Contributions.First(x => x.MemberId == memberId);
+        var partial = contribution.Amount / 2;
+
+        await sut.RecordPaymentAsync(
+            new RecordPaymentRequest(memberId, partial, contribution.Id),
+            adminId,
+            CancellationToken.None);
+
+        var updated = await context.Contributions.FindAsync(contribution.Id);
+        Assert.Contains($"{partial:N2} received", updated!.InternalRemark);
+    }
+
+    [Fact]
+    public async Task RecordPayment_without_contribution_applies_excess_as_advance_credit()
+    {
+        await using var context = await TestDbContextFactory.CreateAsync();
+        var (groupId, adminId, memberId) = await SeedGroupWithMemberAsync(context);
+        var sut = CreateContributionService(context);
+
+        await sut.GenerateAsync(
+            new GenerateContributionsRequest(groupId, "2026-04", "2026-04"),
+            adminId,
+            CancellationToken.None);
+
+        var result = await sut.RecordPaymentAsync(
+            new RecordPaymentRequest(memberId, 1500m, null),
+            adminId,
+            CancellationToken.None);
+
+        Assert.Equal(1500m, result.TotalAmount);
+        Assert.Equal(500m, result.AdvanceAmount);
+        Assert.Equal(2, result.Allocations.Count);
+        Assert.Null(result.Allocations[1].ContributionId);
+        Assert.Equal("Advance credit", result.Allocations[1].Period);
+
+        var ledger = new LedgerService(context);
+        var balance = await ledger.GetBalanceAsync(memberId, groupId, CancellationToken.None);
+        Assert.Equal(500m, balance);
+    }
+
+    [Fact]
+    public async Task RecordPayment_without_pending_creates_advance_only()
+    {
+        await using var context = await TestDbContextFactory.CreateAsync();
+        var (groupId, adminId, memberId) = await SeedGroupWithMemberAsync(context);
+        var sut = CreateContributionService(context);
+
+        var result = await sut.RecordPaymentAsync(
+            new RecordPaymentRequest(memberId, 750m, null),
+            adminId,
+            CancellationToken.None);
+
+        Assert.Equal(750m, result.TotalAmount);
+        Assert.Equal(750m, result.AdvanceAmount);
+        Assert.Single(result.Allocations);
+        Assert.Equal("Advance credit", result.Allocations[0].Period);
+    }
+
+    [Fact]
+    public async Task Generate_applies_advance_credit_to_upcoming_contribution_with_remark()
+    {
+        await using var context = await TestDbContextFactory.CreateAsync();
+        var (groupId, adminId, memberId) = await SeedGroupWithMemberAsync(context);
+        var sut = CreateContributionService(context);
+
+        await sut.RecordPaymentAsync(
+            new RecordPaymentRequest(memberId, 1000m, null),
+            adminId,
+            CancellationToken.None);
+
+        var generated = await sut.GenerateAsync(
+            new GenerateContributionsRequest(groupId, "2026-05", "2026-05"),
+            adminId,
+            CancellationToken.None);
+
+        var memberContribution = generated.Contributions.Single(x => x.MemberId == memberId);
+        Assert.Equal(ContributionStatus.Paid, memberContribution.Status);
+
+        var stored = await context.Contributions.FindAsync(memberContribution.Id);
+        Assert.Contains("adjusted from advance credit", stored!.InternalRemark);
+    }
+
+    [Fact]
+    public async Task RecordPayment_member_submission_requires_admin_approval()
+    {
+        await using var context = await TestDbContextFactory.CreateAsync();
+        var (groupId, adminId, memberId) = await SeedGroupWithMemberAsync(context);
+        var sut = CreateContributionService(context);
+
+        await sut.GenerateAsync(
+            new GenerateContributionsRequest(groupId, "2026-06", "2026-06"),
+            adminId,
+            CancellationToken.None);
+
+        var result = await sut.RecordPaymentAsync(
+            new RecordPaymentRequest(memberId, 500m, null),
+            memberId,
+            CancellationToken.None);
+
+        Assert.Equal(PaymentStatus.PendingApproval, result.Status);
+        Assert.Equal(500m, result.TotalAmount);
+
+        var contribution = context.Contributions.Single(c => c.MemberId == memberId);
+        Assert.Equal(ContributionStatus.Pending, contribution.Status);
+        Assert.DoesNotContain(context.LedgerEntries, x => x.Type == LedgerEntryType.Payment);
+
+        var approved = await sut.ApprovePaymentSubmissionAsync(result.SubmissionId, adminId, CancellationToken.None);
+        Assert.Equal(PaymentStatus.Approved, approved.Status);
+
+        contribution = await context.Contributions.FindAsync(contribution.Id);
+        Assert.Equal(ContributionStatus.Pending, contribution.Status);
+        Assert.Contains(context.LedgerEntries, x => x.Type == LedgerEntryType.Payment);
+    }
+
+    [Fact]
+    public async Task RejectPaymentSubmission_does_not_apply_payment()
+    {
+        await using var context = await TestDbContextFactory.CreateAsync();
+        var (groupId, adminId, memberId) = await SeedGroupWithMemberAsync(context);
+        var sut = CreateContributionService(context);
+
+        await sut.GenerateAsync(
+            new GenerateContributionsRequest(groupId, "2026-07", "2026-07"),
+            adminId,
+            CancellationToken.None);
+
+        var result = await sut.RecordPaymentAsync(
+            new RecordPaymentRequest(memberId, 1000m, null),
+            memberId,
+            CancellationToken.None);
+
+        await sut.RejectPaymentSubmissionAsync(result.SubmissionId, adminId, CancellationToken.None);
+
+        var contribution = context.Contributions.Single(c => c.MemberId == memberId);
+        Assert.Equal(ContributionStatus.Pending, contribution.Status);
+        Assert.DoesNotContain(context.LedgerEntries, x => x.Type == LedgerEntryType.Payment);
+    }
+
+    [Fact]
     public async Task GetPendingSummary_groups_outstanding_by_member()
     {
         await using var context = await TestDbContextFactory.CreateAsync();
@@ -424,6 +622,7 @@ public class ContributionServiceTests
             new LedgerService(context),
             new UnitOfWork(context),
             new GenerateContributionsRequestValidator(),
-            new RecordPaymentRequestValidator());
+            new RecordPaymentRequestValidator(),
+            new FakeNotificationService());
     }
 }

@@ -1,4 +1,4 @@
-/** ResiConnect-inspired dark palette for MySociety */
+/** ResiConnect-inspired dark palette for Society360 */
 export const colors = {
   background: '#020617',
   backgroundElevated: '#0f172a',

@@ -1,5 +1,6 @@
 ## Build / deploy artifacts
 artifacts/
+*.zip
 **/bin/
 **/obj/
 *.user
@@ -54,3 +55,7 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# accidental EAS inspect output under mobile (Windows treats ~ as a folder name)
+mobile/~/
+mobile/eas-inspect*/

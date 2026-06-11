@@ -22,6 +22,8 @@ using MySociety.Application.Members.Validators;
 
 using MySociety.Application.GroupExpenses;
 
+using MySociety.Application.GroupIncomes;
+
 using MySociety.Application.Committee;
 
 using MySociety.Application.Agenda;
@@ -30,6 +32,11 @@ using MySociety.Application.OpenMatters;
 using MySociety.Application.Minutes;
 using MySociety.Application.Resolutions;
 using MySociety.Application.GroupDecisions;
+
+using MySociety.Application.Notifications;
+using MySociety.Application.Assets;
+using MySociety.Application.MaintenanceRecords;
+using MySociety.Application.MaintenanceAlerts;
 
 
 
@@ -61,6 +68,8 @@ public static class DependencyInjection
 
         services.AddScoped<IGroupExpenseService, GroupExpenseService>();
 
+        services.AddScoped<IGroupIncomeService, GroupIncomeService>();
+
         services.AddScoped<ICommitteeMemberService, CommitteeMemberService>();
 
         services.AddScoped<IMeetingService, MeetingService>();
@@ -78,6 +87,14 @@ public static class DependencyInjection
         services.AddScoped<ILedgerQueryService, LedgerQueryService>();
 
         services.AddScoped<IAuthService, AuthService>();
+
+        services.AddScoped<INotificationService, NotificationService>();
+
+        services.AddScoped<IAssetService, AssetService>();
+
+        services.AddScoped<IMaintenanceRecordService, MaintenanceRecordService>();
+
+        services.AddScoped<IMaintenanceAlertService, MaintenanceAlertService>();
 
 
 

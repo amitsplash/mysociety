@@ -130,6 +130,10 @@ public class GroupService : IGroupService
 
             Name = request.Name.Trim(),
 
+            Tagline = NormalizeOptionalText(request.Tagline),
+
+            LogoUrl = NormalizeOptionalText(request.LogoUrl),
+
             Type = request.Type,
 
             ContributionModel = request.ContributionModel,
@@ -258,6 +262,10 @@ public class GroupService : IGroupService
 
         group.Name = request.Name.Trim();
 
+        group.Tagline = NormalizeOptionalText(request.Tagline);
+
+        group.LogoUrl = NormalizeOptionalText(request.LogoUrl);
+
         group.Type = request.Type;
 
         group.ContributionModel = request.ContributionModel;
@@ -318,6 +326,10 @@ public class GroupService : IGroupService
 
             group.Name,
 
+            group.Tagline,
+
+            group.LogoUrl,
+
             group.Type,
 
             group.ContributionModel,
@@ -335,6 +347,9 @@ public class GroupService : IGroupService
     }
 
 
+
+    private static string? NormalizeOptionalText(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
     private static async Task ValidateAsync<T>(IValidator<T> validator, T instance, CancellationToken cancellationToken)
 

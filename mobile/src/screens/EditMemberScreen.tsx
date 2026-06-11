@@ -56,8 +56,9 @@ export function EditMemberScreen({ navigation, route }: Props) {
     const identifier = resetDetails.phone
       ? `Phone: ${resetDetails.phone}`
       : `Username: ${resetDetails.username}`;
+    const groupLabel = group?.name ?? 'Your group';
     const message = [
-      'MySociety — password reset',
+      `${groupLabel} — password reset`,
       identifier,
       `Reset code: ${resetDetails.resetCode}`,
       `Expires: ${new Date(resetDetails.expiresAt).toLocaleDateString()}`,

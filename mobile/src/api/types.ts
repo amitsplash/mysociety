@@ -89,12 +89,12 @@ export interface UpdateResolutionRequest {
 }
 
 export interface LoginRequest {
-  username: string;
+  phone: string;
   password: string;
 }
 
 export interface RegisterRequest {
-  username: string;
+  phone: string;
   email: string;
   name: string;
   password: string;
@@ -122,6 +122,8 @@ export interface LoginResponse {
 export interface GroupResponse {
   id: string;
   name: string;
+  tagline?: string | null;
+  logoUrl?: string | null;
   type: GroupType;
   contributionModel: ContributionModel;
   contributionAmount: number;
@@ -143,6 +145,18 @@ export interface CreateGroupRequest {
   creatorSquareFeet?: number | null;
   creatorCorpusAmount?: number;
   creatorCorpusPaid?: boolean;
+  tagline?: string | null;
+  logoUrl?: string | null;
+}
+
+export interface UpdateGroupRequest {
+  name: string;
+  type: GroupType;
+  contributionModel: ContributionModel;
+  contributionAmount: number;
+  contributionFrequency: ContributionFrequency;
+  tagline?: string | null;
+  logoUrl?: string | null;
 }
 
 export interface CreateGroupResponse {
@@ -195,6 +209,8 @@ export interface ActivateAccountRequest {
   inviteCode: string;
   otp?: string | null;
   password: string;
+  email?: string | null;
+  name?: string | null;
 }
 
 export interface SendPasswordResetCodeRequest {
@@ -302,6 +318,24 @@ export interface CreateGroupExpenseRequest {
   fundType?: GroupFundType;
 }
 
+export interface GroupIncomeResponse {
+  id: string;
+  groupId: string;
+  createdByMemberId: string;
+  createdByName: string;
+  amount: number;
+  description: string;
+  incomeDate: string;
+  createdAt: string;
+}
+
+export interface CreateGroupIncomeRequest {
+  groupId: string;
+  amount: number;
+  description: string;
+  incomeDate: string;
+}
+
 export interface ContributionResponse {
   id: string;
   memberId: string;
@@ -313,6 +347,7 @@ export interface ContributionResponse {
   memberName?: string | null;
   paidAmount?: number;
   remainingAmount?: number;
+  internalRemark?: string | null;
 }
 
 export interface PendingContributionItem {
@@ -321,6 +356,40 @@ export interface PendingContributionItem {
   amount: number;
   paidAmount: number;
   remainingAmount: number;
+  internalRemark?: string | null;
+}
+
+export type PaymentStatus = 'PendingApproval' | 'Approved' | 'Rejected';
+
+export interface PaymentAllocationDetail {
+  paymentId: string;
+  contributionId?: string | null;
+  period: string;
+  amountApplied: number;
+  remainingAfter: number;
+  internalRemark?: string | null;
+  status?: PaymentStatus;
+}
+
+export interface RecordPaymentResponse {
+  submissionId: string;
+  memberId: string;
+  groupId: string;
+  totalAmount: number;
+  advanceAmount: number;
+  status: PaymentStatus;
+  createdAt: string;
+  allocations: PaymentAllocationDetail[];
+}
+
+export interface PendingPaymentSubmission {
+  submissionId: string;
+  memberId: string;
+  memberName: string;
+  totalAmount: number;
+  advanceAmount: number;
+  submittedAt: string;
+  allocations: PaymentAllocationDetail[];
 }
 
 export interface MemberPendingContributions {
@@ -375,6 +444,7 @@ export interface GroupLedgerOverviewResponse {
 
 export interface ApiError {
   error: string;
+  code?: string;
 }
 
 export interface CommitteeMemberResponse {
@@ -519,4 +589,117 @@ export interface UpdateMeetingRequest {
 
 export interface UpdateMeetingStatusRequest {
   status: MeetingStatus;
+}
+
+export type AssetCategory =
+  | 'Lift'
+  | 'Generator'
+  | 'WaterPump'
+  | 'Electrical'
+  | 'Hvac'
+  | 'Plumbing'
+  | 'Security'
+  | 'FireSafety'
+  | 'Other';
+
+export type AssetStatus = 'Active' | 'Inactive' | 'Decommissioned';
+
+export type AssetMaintenanceStatus = 'Ok' | 'DueSoon' | 'Overdue' | 'NotScheduled';
+
+export interface AssetResponse {
+  id: string;
+  groupId: string;
+  createdByMemberId: string;
+  createdByName: string;
+  name: string;
+  category: AssetCategory;
+  location?: string | null;
+  description?: string | null;
+  serialNumber?: string | null;
+  vendorName?: string | null;
+  installDate?: string | null;
+  status: AssetStatus;
+  maintenanceIntervalDays: number;
+  alertLeadDays: number;
+  nextDueDate?: string | null;
+  maintenanceStatus: AssetMaintenanceStatus;
+  createdAt: string;
+}
+
+export interface CreateAssetRequest {
+  groupId: string;
+  name: string;
+  category: AssetCategory;
+  location?: string | null;
+  description?: string | null;
+  serialNumber?: string | null;
+  vendorName?: string | null;
+  installDate?: string | null;
+  status: AssetStatus;
+  maintenanceIntervalDays: number;
+  alertLeadDays: number;
+}
+
+export interface UpdateAssetRequest {
+  name: string;
+  category: AssetCategory;
+  location?: string | null;
+  description?: string | null;
+  serialNumber?: string | null;
+  vendorName?: string | null;
+  installDate?: string | null;
+  status: AssetStatus;
+  maintenanceIntervalDays: number;
+  alertLeadDays: number;
+}
+
+export interface AssetMaintenanceSummaryResponse {
+  dueSoonCount: number;
+  overdueCount: number;
+  totalActiveAssets: number;
+}
+
+export interface MaintenanceRecordResponse {
+  id: string;
+  assetId: string;
+  groupId: string;
+  createdByMemberId: string;
+  createdByName: string;
+  performedDate: string;
+  description: string;
+  cost?: number | null;
+  vendorName?: string | null;
+  notes?: string | null;
+  createdAt: string;
+}
+
+export interface CreateMaintenanceRecordRequest {
+  assetId: string;
+  groupId: string;
+  performedDate: string;
+  description: string;
+  cost?: number | null;
+  vendorName?: string | null;
+  notes?: string | null;
+}
+
+export type NotificationType =
+  | 'ContributionsGenerated'
+  | 'MaintenanceDueSoon'
+  | 'MaintenanceOverdue';
+
+export interface NotificationResponse {
+  id: string;
+  groupId: string;
+  groupName: string;
+  type: NotificationType;
+  title: string;
+  body: string;
+  dataJson?: string | null;
+  readAt?: string | null;
+  createdAt: string;
+}
+
+export interface UnreadNotificationCountResponse {
+  count: number;
 }

@@ -17,19 +17,20 @@ type Props = NativeStackScreenProps<AuthStackParamList, 'Login'>;
 export function LoginScreen({ navigation }: Props) {
   const { login } = useAuth();
   const { showError, showSuccess } = useToast();
-  const [username, setUsername] = useState('demo');
-  const [password, setPassword] = useState('Password123!');
+  const [phone, setPhone] = useState('');
+  const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const apiSetupHint = getApiSetupHint();
 
   const onLogin = async () => {
-    if (!username.trim() || !password) {
-      showError('Enter username and password');
+    const trimmedPhone = phone.trim();
+    if (!trimmedPhone || !password) {
+      showError('Enter phone number and password');
       return;
     }
     setLoading(true);
     try {
-      await login(username.trim(), password);
+      await login(trimmedPhone, password);
       showSuccess('Welcome back!');
     } catch (e) {
       showError(e instanceof ApiClientError ? e.message : 'Login failed');
@@ -44,29 +45,26 @@ export function LoginScreen({ navigation }: Props) {
         <View style={styles.logoMark}>
           <Ionicons name="shield-checkmark" size={28} color="#fff" />
         </View>
-        <Text style={styles.brand}>MySociety</Text>
+        <Text style={styles.brand}>Society360</Text>
         <Text style={styles.subtitle}>Group contributions, expenses & ledgers</Text>
-        <View style={styles.tag}>
-          <Text style={styles.tagText}>Contribution SaaS</Text>
-        </View>
       </View>
       <View style={styles.formCard}>
         <Input
-          label="Username"
-          value={username}
-          onChangeText={setUsername}
+          label="Phone"
+          value={phone}
+          onChangeText={setPhone}
+          keyboardType="phone-pad"
           autoCapitalize="none"
           autoCorrect={false}
+          placeholder="10-digit mobile number"
         />
         <Input label="Password" value={password} onChangeText={setPassword} secureTextEntry />
         <Button label="Sign in" onPress={onLogin} loading={loading} />
         <Pressable onPress={() => navigation.navigate('Register')} style={styles.link}>
           <Text style={styles.linkText}>Create account</Text>
         </Pressable>
-        <Pressable
-          onPress={() => navigation.navigate('ActivateAccount')}
-          style={styles.link}>
-          <Text style={styles.linkText}>Activate account with invite code</Text>
+        <Pressable onPress={() => navigation.navigate('ActivateAccount')} style={styles.link}>
+          <Text style={styles.linkText}>Invited by your admin? Activate account</Text>
         </Pressable>
         <Pressable
           onPress={() => navigation.navigate('ForgotPassword')}
@@ -77,7 +75,6 @@ export function LoginScreen({ navigation }: Props) {
       {apiSetupHint ? (
         <Text style={styles.setupWarning}>{apiSetupHint}</Text>
       ) : null}
-      <Text style={styles.hint}>Demo: demo / Password123! · Invite members can sign in with phone</Text>
     </Screen>
   );
 }
@@ -97,16 +94,6 @@ const styles = StyleSheet.create({
   },
   brand: { fontSize: 30, fontWeight: '800', color: colors.text, letterSpacing: -0.5 },
   subtitle: { fontSize: 14, color: colors.textMuted, marginTop: 6, textAlign: 'center' },
-  tag: {
-    marginTop: spacing.sm,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 20,
-    backgroundColor: colors.primaryMuted,
-    borderWidth: 1,
-    borderColor: colors.primaryBorder,
-  },
-  tagText: { fontSize: 10, fontWeight: '700', color: colors.primary },
   formCard: {
     backgroundColor: colors.surface,
     borderRadius: radii.xl,
@@ -120,12 +107,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: spacing.md,
     lineHeight: 18,
-  },
-  hint: {
-    fontSize: 12,
-    color: colors.textLight,
-    textAlign: 'center',
-    marginTop: spacing.lg,
   },
   link: {
     marginTop: spacing.md,

@@ -2,9 +2,9 @@ using MySociety.Domain.Enums;
 
 namespace MySociety.Application.Auth.Dtos;
 
-public record LoginRequest(string Username, string Password);
+public record LoginRequest(string Phone, string Password);
 
-public record RegisterRequest(string Username, string Email, string Name, string Password);
+public record RegisterRequest(string Phone, string Email, string Name, string Password);
 
 public record SendActivationOtpRequest(string Phone);
 
@@ -13,7 +13,13 @@ public record SendActivationOtpResponse(
     int ExpiresInSeconds,
     string? Otp);
 
-public record ActivateAccountRequest(string Phone, string InviteCode, string? Otp, string Password);
+public record ActivateAccountRequest(
+    string Phone,
+    string InviteCode,
+    string? Otp,
+    string Password,
+    string? Email = null,
+    string? Name = null);
 
 public record SendPasswordResetCodeRequest(string Email);
 

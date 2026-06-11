@@ -15,6 +15,7 @@ public class AppDbContext : DbContext
     public DbSet<Contribution> Contributions => Set<Contribution>();
     public DbSet<Expense> Expenses => Set<Expense>();
     public DbSet<GroupExpense> GroupExpenses => Set<GroupExpense>();
+    public DbSet<GroupIncome> GroupIncomes => Set<GroupIncome>();
     public DbSet<LedgerEntry> LedgerEntries => Set<LedgerEntry>();
     public DbSet<Payment> Payments => Set<Payment>();
     public DbSet<MemberInvite> MemberInvites => Set<MemberInvite>();
@@ -27,6 +28,9 @@ public class AppDbContext : DbContext
     public DbSet<MeetingAttendee> MeetingAttendees => Set<MeetingAttendee>();
     public DbSet<Minute> Minutes => Set<Minute>();
     public DbSet<Resolution> Resolutions => Set<Resolution>();
+    public DbSet<Notification> Notifications => Set<Notification>();
+    public DbSet<Asset> Assets => Set<Asset>();
+    public DbSet<MaintenanceRecord> MaintenanceRecords => Set<MaintenanceRecord>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

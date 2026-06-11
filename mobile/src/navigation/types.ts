@@ -1,7 +1,9 @@
+import { NavigatorScreenParams } from '@react-navigation/native';
+
 export type AuthStackParamList = {
   Login: undefined;
   Register: undefined;
-  ActivateAccount: undefined;
+  ActivateAccount: { phone?: string; inviteCode?: string } | undefined;
   ForgotPassword: undefined;
 };
 
@@ -14,8 +16,10 @@ export type MainTabParamList = {
 };
 
 export type MainStackParamList = {
-  MainTabs: undefined;
+  MainTabs: NavigatorScreenParams<MainTabParamList> | undefined;
+  Notifications: undefined;
   CreateGroup: undefined;
+  GroupSettings: undefined;
   Members: undefined;
   AddMember: undefined;
   EditMember: {
@@ -28,6 +32,7 @@ export type MainStackParamList = {
   AddExpense: undefined;
   GroupFunds: undefined;
   AddGroupExpense: undefined;
+  AddGroupIncome: undefined;
   Ledger: { memberId?: string; memberName?: string; fundType?: 'Maintenance' | 'Corpus' } | undefined;
   ContributionReport: undefined;
   CommitteeMembers: undefined;
@@ -36,4 +41,8 @@ export type MainStackParamList = {
   AddMeeting: undefined;
   MeetingDetail: { meetingId: string };
   Resolutions: undefined;
+  AssetRegister: undefined;
+  AssetDetail: { assetId: string };
+  AddEditAsset: { assetId?: string } | undefined;
+  LogMaintenance: { assetId: string; assetName: string };
 };

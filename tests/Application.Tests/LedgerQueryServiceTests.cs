@@ -76,7 +76,8 @@ public class LedgerQueryServiceTests
             new LedgerService(context),
             new UnitOfWork(context),
             new GenerateContributionsRequestValidator(),
-            new RecordPaymentRequestValidator());
+            new RecordPaymentRequestValidator(),
+            new FakeNotificationService());
 
         var generated = await contributionService.GenerateAsync(
             new GenerateContributionsRequest(groupId, "2026-01", "2026-01"),
@@ -84,9 +85,13 @@ public class LedgerQueryServiceTests
             CancellationToken.None);
         var contribution = generated.Contributions.Single(c => c.MemberId == memberId);
 
-        await contributionService.RecordPaymentAsync(
+        var payment = await contributionService.RecordPaymentAsync(
             new RecordPaymentRequest(memberId, contribution.Amount, contribution.Id),
             memberId,
+            CancellationToken.None);
+        await contributionService.ApprovePaymentSubmissionAsync(
+            payment.SubmissionId,
+            adminId,
             CancellationToken.None);
 
         var societyExpenseService = new GroupExpenseService(

@@ -62,7 +62,9 @@ public class GlobalExceptionHandler
         context.Response.ContentType = "application/json";
         context.Response.StatusCode = (int)statusCode;
 
-        var payload = JsonSerializer.Serialize(new { error = message });
+        var payload = exception is ConflictException conflictEx && conflictEx.Code is not null
+            ? JsonSerializer.Serialize(new { error = message, code = conflictEx.Code })
+            : JsonSerializer.Serialize(new { error = message });
         await context.Response.WriteAsync(payload);
     }
 }

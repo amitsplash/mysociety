@@ -13,6 +13,7 @@ public interface IUserRepository
     Task<User?> GetByUsernameWithMembershipsAsync(string username, CancellationToken cancellationToken);
     Task<User?> GetByEmailWithMembershipsAsync(string email, CancellationToken cancellationToken);
     Task<bool> ExistsByUsernameAsync(string username, CancellationToken cancellationToken);
+    Task<bool> ExistsByPhoneAsync(string phone, CancellationToken cancellationToken);
     Task<bool> ExistsByEmailAsync(string email, CancellationToken cancellationToken);
     Task AddAsync(User user, CancellationToken cancellationToken);
     Task SaveChangesAsync(CancellationToken cancellationToken);

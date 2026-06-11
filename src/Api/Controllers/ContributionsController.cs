@@ -33,7 +33,7 @@ public class ContributionsController : ControllerBase
     }
 
     [HttpPost("api/payments")]
-    public async Task<ActionResult<PaymentResponse>> RecordPayment(
+    public async Task<ActionResult<RecordPaymentResponse>> RecordPayment(
         [FromBody] RecordPaymentRequest request,
         CancellationToken cancellationToken)
     {
@@ -59,6 +59,45 @@ public class ContributionsController : ControllerBase
     {
         var actingMemberId = await HttpContext.GetRequiredActingMemberIdAsync(_memberRepository, cancellationToken);
         var result = await _contributionService.GetByGroupIdAsync(groupId, actingMemberId, cancellationToken);
+        return Ok(result);
+    }
+
+    [HttpGet("api/groups/{groupId:guid}/payments/pending-approval")]
+    public async Task<ActionResult<IReadOnlyList<PendingPaymentSubmissionResponse>>> GetPendingPaymentSubmissions(
+        Guid groupId,
+        CancellationToken cancellationToken)
+    {
+        var actingMemberId = await HttpContext.GetRequiredActingMemberIdAsync(_memberRepository, cancellationToken);
+        var result = await _contributionService.GetPendingPaymentSubmissionsAsync(groupId, actingMemberId, cancellationToken);
+        return Ok(result);
+    }
+
+    [HttpGet("api/payments/my-pending-approval")]
+    public async Task<ActionResult<IReadOnlyList<PendingPaymentSubmissionResponse>>> GetMyPendingPaymentSubmissions(
+        CancellationToken cancellationToken)
+    {
+        var actingMemberId = await HttpContext.GetRequiredActingMemberIdAsync(_memberRepository, cancellationToken);
+        var result = await _contributionService.GetMyPendingPaymentSubmissionsAsync(actingMemberId, cancellationToken);
+        return Ok(result);
+    }
+
+    [HttpPost("api/payments/submissions/{submissionId:guid}/approve")]
+    public async Task<ActionResult<PaymentSubmissionActionResponse>> ApprovePaymentSubmission(
+        Guid submissionId,
+        CancellationToken cancellationToken)
+    {
+        var actingMemberId = await HttpContext.GetRequiredActingMemberIdAsync(_memberRepository, cancellationToken);
+        var result = await _contributionService.ApprovePaymentSubmissionAsync(submissionId, actingMemberId, cancellationToken);
+        return Ok(result);
+    }
+
+    [HttpPost("api/payments/submissions/{submissionId:guid}/reject")]
+    public async Task<ActionResult<PaymentSubmissionActionResponse>> RejectPaymentSubmission(
+        Guid submissionId,
+        CancellationToken cancellationToken)
+    {
+        var actingMemberId = await HttpContext.GetRequiredActingMemberIdAsync(_memberRepository, cancellationToken);
+        var result = await _contributionService.RejectPaymentSubmissionAsync(submissionId, actingMemberId, cancellationToken);
         return Ok(result);
     }
 

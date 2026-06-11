@@ -19,14 +19,50 @@ public record ContributionResponse(
     DateTime CreatedAt,
     string? MemberName = null,
     decimal PaidAmount = 0,
-    decimal RemainingAmount = 0);
+    decimal RemainingAmount = 0,
+    string? InternalRemark = null);
 
 public record PendingContributionItemResponse(
     Guid Id,
     string Period,
     decimal Amount,
     decimal PaidAmount,
-    decimal RemainingAmount);
+    decimal RemainingAmount,
+    string? InternalRemark = null);
+
+public record PaymentAllocationDetail(
+    Guid PaymentId,
+    Guid? ContributionId,
+    string Period,
+    decimal AmountApplied,
+    decimal RemainingAfter,
+    string? InternalRemark,
+    PaymentStatus Status = PaymentStatus.Approved);
+
+public record RecordPaymentResponse(
+    Guid SubmissionId,
+    Guid MemberId,
+    Guid GroupId,
+    decimal TotalAmount,
+    decimal AdvanceAmount,
+    PaymentStatus Status,
+    DateTime CreatedAt,
+    IReadOnlyList<PaymentAllocationDetail> Allocations);
+
+public record PendingPaymentSubmissionResponse(
+    Guid SubmissionId,
+    Guid MemberId,
+    string MemberName,
+    decimal TotalAmount,
+    decimal AdvanceAmount,
+    DateTime SubmittedAt,
+    IReadOnlyList<PaymentAllocationDetail> Allocations);
+
+public record PaymentSubmissionActionResponse(
+    Guid SubmissionId,
+    PaymentStatus Status,
+    decimal TotalAmount,
+    IReadOnlyList<PaymentAllocationDetail> Allocations);
 
 public record MemberPendingContributionsResponse(
     Guid MemberId,
@@ -50,10 +86,3 @@ public record GenerateContributionsResponse(
     int SkippedCount,
     IReadOnlyList<ContributionResponse> Contributions);
 
-public record PaymentResponse(
-    Guid Id,
-    Guid MemberId,
-    Guid GroupId,
-    Guid? ContributionId,
-    decimal Amount,
-    DateTime CreatedAt);

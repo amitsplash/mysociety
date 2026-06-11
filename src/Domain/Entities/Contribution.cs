@@ -10,6 +10,7 @@ public class Contribution : BaseEntity
     public string Period { get; set; } = string.Empty;
     public decimal Amount { get; set; }
     public ContributionStatus Status { get; set; } = ContributionStatus.Pending;
+    public string? InternalRemark { get; set; }
 
     public Member Member { get; set; } = null!;
     public Group Group { get; set; } = null!;
